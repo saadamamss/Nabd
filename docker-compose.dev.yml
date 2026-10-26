@@ -1,5 +1,13 @@
 # Nabd dev environment (08 §2 'dev' row) — `docker compose --env-file .env up -d`
 # Staging/production use DIFFERENT env files (07 §7) — never copy secrets into code.
+#
+# ── Lean-machine mode (8th-gen i5 / 12 GB laptop is MORE than this needs) ──
+#   Every service is memory-capped and belongs to a profile, so you only run
+#   what your current phase needs:
+#     P1–P2 (auth, assets, coding):   docker compose --env-file .env up -d          # postgres only
+#     P3+  (ingestion needs brokers): docker compose --env-file .env --profile mqtt --profile queue up -d
+#   Check real usage anytime: docker stats
+
 
 name: nabd
 
@@ -21,6 +29,8 @@ services:
     image: timescale/timescaledb:2.17.2-pg16
     container_name: nabd-postgres
     restart: unless-stopped
+    mem_limit: 1g            # bounded so it can never starve your laptop (lean-mode policy)
+    shm_size: 128mb
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
@@ -43,6 +53,8 @@ services:
     image: emqx/emqx:5.8.6
     container_name: nabd-emqx
     restart: unless-stopped
+    profiles: [mqtt]         # starts only with --profile mqtt (P3+)
+    mem_limit: 1g
     ports:
       - "127.0.0.1:1883:1883"      # MQTT (dev plaintext)
       - "127.0.0.1:18083:18083"    # Dashboard (user EMQX/dashboard… change password!)
@@ -63,6 +75,8 @@ services:
     image: rabbitmq:4.1.8-management
     container_name: nabd-rabbitmq
     restart: unless-stopped
+    profiles: [queue]        # starts only with --profile queue (P3+)
+    mem_limit: 768m
     environment:
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
