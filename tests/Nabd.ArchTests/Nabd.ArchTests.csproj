@@ -1,0 +1,41 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Modules\Identity\Nabd.Identity\Nabd.Identity.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Identity\Nabd.Identity.Contracts\Nabd.Identity.Contracts.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Assets\Nabd.Assets\Nabd.Assets.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Assets\Nabd.Assets.Contracts\Nabd.Assets.Contracts.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Ingestion\Nabd.Ingestion\Nabd.Ingestion.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Ingestion\Nabd.Ingestion.Contracts\Nabd.Ingestion.Contracts.csproj" />
+    <ProjectReference Include="..\..\src\Modules\TelemetryStore\Nabd.TelemetryStore\Nabd.TelemetryStore.csproj" />
+    <ProjectReference Include="..\..\src\Modules\TelemetryStore\Nabd.TelemetryStore.Contracts\Nabd.TelemetryStore.Contracts.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Rules\Nabd.Rules\Nabd.Rules.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Rules\Nabd.Rules.Contracts\Nabd.Rules.Contracts.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Alerting\Nabd.Alerting\Nabd.Alerting.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Alerting\Nabd.Alerting.Contracts\Nabd.Alerting.Contracts.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Notifications\Nabd.Notifications\Nabd.Notifications.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Notifications\Nabd.Notifications.Contracts\Nabd.Notifications.Contracts.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Realtime\Nabd.Realtime\Nabd.Realtime.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Realtime\Nabd.Realtime.Contracts\Nabd.Realtime.Contracts.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Admin\Nabd.Admin\Nabd.Admin.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Admin\Nabd.Admin.Contracts\Nabd.Admin.Contracts.csproj" />
+    <ProjectReference Include="..\..\src\SharedKernel\Nabd.SharedKernel\Nabd.SharedKernel.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.11.0" />
+    <PackageReference Include="NetArchTest.Rules" Version="1.3.2" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="4.0.1">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+</Project>

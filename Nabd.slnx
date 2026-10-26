@@ -1,0 +1,54 @@
+<Solution>
+  <Folder Name="/src/" />
+  <Folder Name="/src/Hosts/">
+    <Project Path="src/Hosts/Nabd.ApiHost/Nabd.ApiHost.csproj" />
+    <Project Path="src/Hosts/Nabd.ProcessingHost/Nabd.ProcessingHost.csproj" />
+  </Folder>
+  <Folder Name="/src/Modules/" />
+  <Folder Name="/src/Modules/Admin/">
+    <Project Path="src/Modules/Admin/Nabd.Admin.Contracts/Nabd.Admin.Contracts.csproj" />
+    <Project Path="src/Modules/Admin/Nabd.Admin/Nabd.Admin.csproj" />
+  </Folder>
+  <Folder Name="/src/Modules/Alerting/">
+    <Project Path="src/Modules/Alerting/Nabd.Alerting.Contracts/Nabd.Alerting.Contracts.csproj" />
+    <Project Path="src/Modules/Alerting/Nabd.Alerting/Nabd.Alerting.csproj" />
+  </Folder>
+  <Folder Name="/src/Modules/Assets/">
+    <Project Path="src/Modules/Assets/Nabd.Assets.Contracts/Nabd.Assets.Contracts.csproj" />
+    <Project Path="src/Modules/Assets/Nabd.Assets/Nabd.Assets.csproj" />
+  </Folder>
+  <Folder Name="/src/Modules/Identity/">
+    <Project Path="src/Modules/Identity/Nabd.Identity.Contracts/Nabd.Identity.Contracts.csproj" />
+    <Project Path="src/Modules/Identity/Nabd.Identity/Nabd.Identity.csproj" />
+  </Folder>
+  <Folder Name="/src/Modules/Ingestion/">
+    <Project Path="src/Modules/Ingestion/Nabd.Ingestion.Contracts/Nabd.Ingestion.Contracts.csproj" />
+    <Project Path="src/Modules/Ingestion/Nabd.Ingestion/Nabd.Ingestion.csproj" />
+  </Folder>
+  <Folder Name="/src/Modules/Notifications/">
+    <Project Path="src/Modules/Notifications/Nabd.Notifications.Contracts/Nabd.Notifications.Contracts.csproj" />
+    <Project Path="src/Modules/Notifications/Nabd.Notifications/Nabd.Notifications.csproj" />
+  </Folder>
+  <Folder Name="/src/Modules/Realtime/">
+    <Project Path="src/Modules/Realtime/Nabd.Realtime.Contracts/Nabd.Realtime.Contracts.csproj" />
+    <Project Path="src/Modules/Realtime/Nabd.Realtime/Nabd.Realtime.csproj" />
+  </Folder>
+  <Folder Name="/src/Modules/Rules/">
+    <Project Path="src/Modules/Rules/Nabd.Rules.Contracts/Nabd.Rules.Contracts.csproj" />
+    <Project Path="src/Modules/Rules/Nabd.Rules/Nabd.Rules.csproj" />
+  </Folder>
+  <Folder Name="/src/Modules/TelemetryStore/">
+    <Project Path="src/Modules/TelemetryStore/Nabd.TelemetryStore.Contracts/Nabd.TelemetryStore.Contracts.csproj" />
+    <Project Path="src/Modules/TelemetryStore/Nabd.TelemetryStore/Nabd.TelemetryStore.csproj" />
+  </Folder>
+  <Folder Name="/src/SharedKernel/">
+    <Project Path="src/SharedKernel/Nabd.SharedKernel/Nabd.SharedKernel.csproj" />
+  </Folder>
+  <Folder Name="/src/Tools/">
+    <Project Path="src/Tools/Nabd.Simulator/Nabd.Simulator.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Nabd.ArchTests/Nabd.ArchTests.csproj" />
+    <Project Path="tests/Nabd.HelloModule/Nabd.HelloModule.csproj" />
+  </Folder>
+</Solution>

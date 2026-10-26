@@ -1,0 +1,15 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\SharedKernel\Nabd.SharedKernel\Nabd.SharedKernel.csproj" />
+    <ProjectReference Include="..\Nabd.Ingestion.Contracts\Nabd.Ingestion.Contracts.csproj" />
+    <ProjectReference Include="..\..\Assets\Nabd.Assets.Contracts\Nabd.Assets.Contracts.csproj" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+</Project>

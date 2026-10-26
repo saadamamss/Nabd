@@ -1,0 +1,30 @@
+# ===== .NET =====
+bin/
+obj/
+out/
+*.user
+*.suo
+*.swp
+.vs/
+.idea/
+test-results/
+*.trx
+coverage/
+BenchmarkDotNet.Artifacts/
+
+# ===== Node / Next.js (P5) =====
+node_modules/
+.next/
+out/
+*.tsbuildinfo
+
+# ===== Docker / env secrets (07 §7: env files live per environment, never in git) =====
+.env
+.env.local
+.env.*.local
+*.env
+!.env.example
+
+# ===== OS =====
+.DS_Store
+Thumbs.db

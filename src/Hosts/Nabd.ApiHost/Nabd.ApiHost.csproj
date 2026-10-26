@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.14" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\Modules\Identity\Nabd.Identity\Nabd.Identity.csproj" />
+    <ProjectReference Include="..\..\Modules\Assets\Nabd.Assets\Nabd.Assets.csproj" />
+    <ProjectReference Include="..\..\Modules\Ingestion\Nabd.Ingestion\Nabd.Ingestion.csproj" />
+    <ProjectReference Include="..\..\Modules\TelemetryStore\Nabd.TelemetryStore\Nabd.TelemetryStore.csproj" />
+    <ProjectReference Include="..\..\Modules\Rules\Nabd.Rules\Nabd.Rules.csproj" />
+    <ProjectReference Include="..\..\Modules\Alerting\Nabd.Alerting\Nabd.Alerting.csproj" />
+    <ProjectReference Include="..\..\Modules\Notifications\Nabd.Notifications\Nabd.Notifications.csproj" />
+    <ProjectReference Include="..\..\Modules\Realtime\Nabd.Realtime\Nabd.Realtime.csproj" />
+    <ProjectReference Include="..\..\Modules\Admin\Nabd.Admin\Nabd.Admin.csproj" />
+  </ItemGroup>
+
+</Project>

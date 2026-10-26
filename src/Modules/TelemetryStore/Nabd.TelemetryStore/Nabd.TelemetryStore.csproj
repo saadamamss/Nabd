@@ -1,0 +1,15 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\SharedKernel\Nabd.SharedKernel\Nabd.SharedKernel.csproj" />
+    <ProjectReference Include="..\Nabd.TelemetryStore.Contracts\Nabd.TelemetryStore.Contracts.csproj" />
+    <ProjectReference Include="..\..\Ingestion\Nabd.Ingestion.Contracts\Nabd.Ingestion.Contracts.csproj" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+</Project>

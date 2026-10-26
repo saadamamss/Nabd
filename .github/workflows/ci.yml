@@ -1,0 +1,31 @@
+# CI pipeline — P0 baseline (full pipeline per 08 §3 lands by P2).
+# Every PR must run: build → unit tests → module arch tests → integration smoke (< 15 min budget, 09 §8).
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest          # Docker available → Testcontainers tests run (HelloDatabaseTests)
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET 10 (ADR-002 pin)
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Restore
+        run: dotnet restore Nabd.slnx
+
+      - name: Build
+        run: dotnet build Nabd.slnx -c Release --no-restore
+
+      - name: Unit + arch + integration tests
+        run: dotnet test Nabd.slnx -c Release --no-build --logger "trx"
+
+      # Coverage gate (70% on module code, rising rule) joins here by P1 — 09 §2.
+      # NetArchTest already runs inside `dotnet test` (RoomBoundaryTests).

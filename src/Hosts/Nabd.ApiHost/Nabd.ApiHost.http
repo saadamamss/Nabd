@@ -1,0 +1,6 @@
+@Nabd.ApiHost_HostAddress = http://localhost:5109
+
+GET {{Nabd.ApiHost_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

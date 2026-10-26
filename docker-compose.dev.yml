@@ -1,0 +1,82 @@
+# Nabd dev environment (08 §2 'dev' row) — `docker compose --env-file .env up -d`
+# Staging/production use DIFFERENT env files (07 §7) — never copy secrets into code.
+
+name: nabd
+
+networks:
+  nabd-dev:
+    driver: bridge
+
+volumes:
+  nabd-pgdata:
+  nabd-emqx-data:
+  nabd-emqx-log:
+  nabd-rabbitmq-data:
+
+services:
+  # ── PostgreSQL 16 + TimescaleDB (ADR-003) ───────────────────────────────
+  # MVP scale: one instance. P0 spike topics: RLS × compressed chunks,
+  # continuous aggregates, ingestion writer role (04 §10).
+  postgres:
+    image: timescale/timescaledb:2.17.2-pg16
+    container_name: nabd-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - nabd-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks: [nabd-dev]
+
+  # ── EMQX 5 — MQTT broker (ADR-004) ─────────────────────────────────────
+  # Dev only: plaintext 1883 locally; prod path is 8883/TLS via Caddy (08 §2).
+  # P0 spike: node restart persistence behavior (10 §3 / NFR-04 wording).
+  emqx:
+    image: emqx/emqx:5.8.6
+    container_name: nabd-emqx
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:1883:1883"      # MQTT (dev plaintext)
+      - "127.0.0.1:18083:18083"    # Dashboard (user EMQX/dashboard… change password!)
+    volumes:
+      - nabd-emqx-data:/opt/emqx/data
+      - nabd-emqx-log:/opt/emqx/log
+    healthcheck:
+      test: ["CMD", "emqx", "ctl", "status"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks: [nabd-dev]
+
+  # ── RabbitMQ — the ingestion buffer CANDIDATE (ADR-005) ─────────────────
+  # v0.2 note: RabbitMQ serves only the HTTP-gateway path and must earn its
+  # place at the P3 spike (direct batched insert vs publisher-confirm queue).
+  rabbitmq:
+    image: rabbitmq:4.1.8-management
+    container_name: nabd-rabbitmq
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
+    ports:
+      - "127.0.0.1:5672:5672"      # AMQP
+      - "127.0.0.1:15672:15672"    # Management UI
+    volumes:
+      - nabd-rabbitmq-data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks: [nabd-dev]
+
+  # Composition-root hosts join compose later in P0 as their Dockerfiles land
+  # (apihost on 127.0.0.1:8080, processinghost no public port). Until then run them with dotnet run.
