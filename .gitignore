@@ -1,5 +1,10 @@
 # ===== Blueprint / planning docs (kept local, not part of the code repo) =====
 /plan/
+/phases/
+/docs/dev
+.opencode
+AGENTS.md
+CONTRIBUTING.md
 
 # ===== .NET =====
 bin/
