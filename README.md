@@ -25,7 +25,10 @@ src/SharedKernel/   integration events + Result (03 §8)
 src/Tools/          simulator — a real device, never a shortcut (05 §10)
 tests/              ArchTests (room walls) · HelloModule (P0 DoD)
 docs/dev/           setup + handover guides
+docs/runbook/       spike proofs + verdict papers (P0) — earlier: ops runbooks (P6)
+phases/             FIELD MANUALS — per-phase small specs (P0 live now)
 plan/               the v0.2 Blueprint (13 files) — local only, gitignored
+db/migrations/      schema as code (P0 spec 02): 0001 identity · 0002 assets · 0003 telemetry
 scripts/            environment provisioning
 ```
 
