@@ -1,3 +1,6 @@
+# ===== Blueprint / planning docs (kept local, not part of the code repo) =====
+/plan/
+
 # ===== .NET =====
 bin/
 obj/
