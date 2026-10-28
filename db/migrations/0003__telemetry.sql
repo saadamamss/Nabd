@@ -15,7 +15,7 @@ CREATE TABLE IF NOT EXISTS telemetry.readings (
 
 -- the magic that makes 2000/sec boring (plan/04 §6)
 SELECT create_hypertable('telemetry.readings', 'time',
-    chunk_interval => INTERVAL '1 day',
+    chunk_time_interval => INTERVAL '1 day',
     if_not_exists => TRUE);
 
 -- unique key MUST include the partition column 'time'
