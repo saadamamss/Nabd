@@ -25,10 +25,10 @@ public static class Result
 {
     public static Result<Unit> Success() => new(Unit.Value, true, null);
     public static Result<Unit> Failure(string error) => new(default, false, error);
+}
 
-    /// <summary>Placeholder unit type for void operations.</summary>
-    public readonly struct Unit
-    {
-        public static readonly Unit Value = default;
-    }
+/// <summary>Placeholder unit type for void operations (top-level so Result&lt;Unit&gt; works outside this file).</summary>
+public readonly struct Unit
+{
+    public static readonly Unit Value = default;
 }

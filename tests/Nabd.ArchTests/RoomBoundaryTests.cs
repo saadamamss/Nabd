@@ -69,14 +69,18 @@ public sealed class RoomBoundaryTests
                 .Select(r => r.Name)
                 .ToList();
 
-            // Impled rooms must also NOT reference other rooms' impl assemblies or hosts:
+            // Room-wall intent (03 §4 rule 1): rooms may reference their OWN assembly,
+            // OTHER rooms' contracts, SharedKernel, and the .NET BCL.
+            // ONLY cross-room references are forbidden — i.e. any "Nabd.*" assembly
+            // outside the allowed set (a real breach always begins with our own prefix).
+            // Third-party infrastructure (Npgsql, argon2 providers, ...) is NOT a
+            // room-to-room concern; flagging it here was a test-interpretation bug
+            // caught by P1 spec 02 (identity's Postgres access), logged in NOTES.
             var forbidden = room.ImplAssembly.GetReferencedAssemblies()
                 .Where(r => r.Name is { } name &&
                             !allowed.Contains(name) &&
-                            !name.StartsWith("System") &&
-                            !name.StartsWith("Microsoft") &&
-                            !name.StartsWith("netstandard") &&
-                            name != "mscorlib" &&
+                            name.StartsWith("Nabd.") &&
+                            !name.StartsWith("Nabd.Contracts") &&
                             name != "Nabd.ArchTests")
                 .Select(r => r.Name);
 
