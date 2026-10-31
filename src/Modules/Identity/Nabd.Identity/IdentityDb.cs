@@ -59,7 +59,7 @@ public sealed class IdentityDb
     private static async Task SetTenantAsync(NpgsqlConnection conn, Guid tenantId, CancellationToken ct)
     {
         await using var cmd = new NpgsqlCommand(
-            "SET LOCAL app.current_tenant = @tid", conn);
+            "SELECT set_config('app.current_tenant', @tid::text, true)", conn);
         cmd.Parameters.AddWithValue("tid", tenantId);
         await cmd.ExecuteNonQueryAsync(ct);
     }
