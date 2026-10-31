@@ -2,6 +2,8 @@ using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Mvc;
 using Nabd.Assets;
 using Nabd.Assets.Contracts;
+using Nabd.Identity;
+using Nabd.Identity.Contracts;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -15,6 +17,9 @@ builder.Services.AddOpenApi();
 // ===== Room wiring (composition root — the ONLY place impl assemblies are touched) =====
 // P0: Assets' in-memory stub. P1/P2 swap implementations behind the same contracts.
 builder.Services.AddSingleton<IDeviceRegistry, InMemoryDeviceRegistry>();
+builder.Services.AddSingleton<IdentityDb>();
+builder.Services.AddSingleton<ITenantRegistration, TenantRegistration>();
+builder.Services.AddSingleton<IUserManagement, UserManagement>();
 
 // Health endpoints (ADR-010; 08 §6): liveness = process up.
 // Readiness expands in P1+ to probe DB, queue and broker session (08 §6 readiness list).
