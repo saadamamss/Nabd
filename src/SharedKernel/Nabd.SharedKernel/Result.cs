@@ -6,14 +6,24 @@ namespace Nabd.SharedKernel;
 /// </summary>
 public class Result<T>
 {
-        internal Result(T? value, bool isSuccess, string? error)
+    // failure carries no payload — so the stored field must be nullable
+    private readonly T? _value;
+
+    internal Result(T? value, bool isSuccess, string? error)
     {
-        Value = value;
+        _value = value;
         IsSuccess = isSuccess;
         Error = error;
     }
 
-    public T? Value { get; }
+    /// <summary>
+    /// The payload of a SUCCESS — guaranteed non-null for every consumer (reading it
+    /// on a failure is a caller bug with a loud message, never a silent null).
+    /// </summary>
+    public T Value => IsSuccess
+        ? _value!
+        : throw new InvalidOperationException($"Result is a failure: {Error}");
+
     public bool IsSuccess { get; }
     public string? Error { get; }
 

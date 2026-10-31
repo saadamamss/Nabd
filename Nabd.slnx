@@ -50,5 +50,6 @@
   <Folder Name="/tests/">
     <Project Path="tests/Nabd.ArchTests/Nabd.ArchTests.csproj" />
     <Project Path="tests/Nabd.HelloModule/Nabd.HelloModule.csproj" />
+    <Project Path="tests/Nabd.IsolationSuite/Nabd.IsolationSuite.csproj" />
   </Folder>
 </Solution>
