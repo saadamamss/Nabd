@@ -86,6 +86,49 @@ public sealed class UserManagement : IUserManagement
         }
     }
 
+    public async Task<Result<IReadOnlyList<UserSnapshot>>> ListUsersAsync(CallerContext acting, Guid tenantId, CancellationToken ct = default)
+    {
+        if (acting.TenantId != tenantId) return Result<IReadOnlyList<UserSnapshot>>.Failure(IdentityErrors.CrossTenantTarget);
+
+        var (conn, tx) = await _db.OpenTenantScopeAsync(tenantId, ct);
+
+        try
+        {
+
+            var list = new List<UserSnapshot>();
+
+            await using (var cmd = new NpgsqlCommand("""
+                SELECT u.id, u.tenant_id, u.email::text,u.display_name, u.locale, COALESCE(r.role_code, 'viewer')
+                FROM identity.users u
+                LEFT JOIN identity.user_roles r ON r.user_id = u.id AND r.tenant_id = u.tenant_id
+                WHERE u.tenant_id = @t
+                ORDER BY u.email
+                """, conn, tx))
+            {
+
+                cmd.Parameters.AddWithValue("t", tenantId);
+
+                await using var reader = await cmd.ExecuteReaderAsync(ct);
+
+                while (await reader.ReadAsync(ct)) list.Add(new UserSnapshot(
+                    reader.GetGuid(0), reader.GetGuid(1), reader.GetString(2), reader.GetString(5), reader.GetString(4)));
+            }
+
+            await tx.CommitAsync(ct);
+
+            return Result<IReadOnlyList<UserSnapshot>>.Success(list);
+        }
+        catch
+        {
+            await tx.RollbackAsync(ct);
+            throw;
+        }
+        finally
+        {
+            await conn.DisposeAsync();
+        }
+    }
+
     public async Task<Result<UserSnapshot>> SetUserRoleAsync(
         CallerContext acting, UserRoleChangeRequest request, CancellationToken ct = default)
     {
@@ -107,7 +150,7 @@ public sealed class UserManagement : IUserManagement
             {
                 var adminCount = await CountTenantAdminsAsync(conn, tx, request.TargetTenantId, ct);
                 if (adminCount <= 1)
-                    return Result<UserSnapshot>.Failure("identity:last_admin");
+                    return Result<UserSnapshot>.Failure(IdentityErrors.LastAdmin);
             }
 
             await using (var del = new NpgsqlCommand("""
@@ -190,7 +233,7 @@ public sealed class UserManagement : IUserManagement
         var forbidden = AssertCanManage(acting, targetTenantId);
         if (forbidden is not null) return Result<Unit>.Failure(forbidden);
         if (targetUserId == acting.UserId)
-            return Result<Unit>.Failure("identity:self_delete"); // no admin removes themselves into a locked office
+            return Result<Unit>.Failure(IdentityErrors.SelfDelete); // no admin removes themselves into a locked office
 
         var (conn, tx) = await _db.OpenTenantScopeAsync(targetTenantId, ct);
         try
@@ -203,7 +246,7 @@ public sealed class UserManagement : IUserManagement
             {
                 var adminCount = await CountTenantAdminsAsync(conn, tx, targetTenantId, ct);
                 if (adminCount <= 1)
-                    return Result<Unit>.Failure("identity:last_admin");
+                    return Result<Unit>.Failure(IdentityErrors.LastAdmin);
             }
 
             // FKs CASCADE for user_roles + refresh_tokens (0004), so the row delete is complete

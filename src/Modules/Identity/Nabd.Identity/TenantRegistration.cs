@@ -106,6 +106,48 @@ public sealed class TenantRegistration : ITenantRegistration
         }
     }
 
+    public async Task<Result<TenantSnapshot>> GetTenantAsync(CallerContext acting, Guid tenantId, CancellationToken ct = default)
+    {
+        if (acting.TenantId != tenantId) return Result<TenantSnapshot>.Failure(IdentityErrors.CrossTenantTarget);
+
+        var (conn, tx) = await _db.OpenTenantScopeAsync(tenantId, ct);
+
+        try
+        {
+            TenantSnapshot? tenant = null;
+
+            await using (var cmd = new NpgsqlCommand("SELECT id,name,is_active FROM identity.tenants WHERE id = @id;", conn, tx))
+            {
+                cmd.Parameters.AddWithValue("id", tenantId);
+
+                await using var reader = await cmd.ExecuteReaderAsync(ct);
+
+                if (await reader.ReadAsync(ct))
+                {
+                    tenant = new TenantSnapshot(reader.GetGuid(0), reader.GetString(1), reader.GetBoolean(2));
+                }
+            }
+
+            if (tenant is null)
+            {
+                return Result<TenantSnapshot>.Failure(IdentityErrors.TenantNotFound);
+            }
+
+            await tx.CommitAsync(ct);
+
+            return Result<TenantSnapshot>.Success(tenant);
+        }
+        catch
+        {
+            await tx.RollbackAsync(ct);
+            throw;
+        }
+        finally
+        {
+            await conn.DisposeAsync();
+        }
+    }
+
     private static async Task<bool> ExistsAsync(
         NpgsqlConnection conn, NpgsqlTransaction tx, string sql, string value, CancellationToken ct)
     {
