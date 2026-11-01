@@ -29,6 +29,8 @@ public sealed record UserLocaleUpdateRequest(Guid TargetTenantId, Guid TargetUse
 public interface ITenantRegistration
 {
     Task<Result<TenantRegistrationResult>> RegisterTenantAsync(RegisterTenantRequest request, CancellationToken ct = default);
+
+    Task<Result<TenantSnapshot>> GetTenantAsync(CallerContext acting, Guid tenantId, CancellationToken ct = default);
 }
 
 public interface IUserManagement
@@ -43,6 +45,8 @@ public interface IUserManagement
 
     /// <summary>FR-04's "remove": hard delete at P1 (FKs cascade roles/sessions; user status column deferred — NOTES).</summary>
     Task<Result<Unit>> DeleteUserAsync(CallerContext acting, Guid targetTenantId, Guid targetUserId, CancellationToken ct = default);
+
+    Task<Result<IReadOnlyList<UserSnapshot>>> ListUsersAsync(CallerContext acting, Guid tenantId, CancellationToken ct = default);
 }
 
 /// <summary>Stable error codes the API Host translates to HTTP + catalog text (05 §6 family).</summary>
@@ -55,5 +59,7 @@ public static class IdentityErrors
     public const string RoleUnknown       = "identity:role_unknown";
     public const string Forbidden         = "identity:forbidden";          // caller lacks the role for this op (07 §5)
     public const string CrossTenantTarget = "identity:cross_tenant_target"; // target alive in another tenant
-    public const string InvalidLocale     = "identity:invalid_locale";     // ar|en only at P1 (FR-06)
+    public const string InvalidLocale = "identity:invalid_locale";     // ar|en only at P1 (FR-06)
+    public const string LastAdmin = "identity:last_admin";
+    public const string SelfDelete = "identity:self_delete";
 }
