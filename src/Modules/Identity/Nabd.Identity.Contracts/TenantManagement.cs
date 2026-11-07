@@ -62,4 +62,6 @@ public static class IdentityErrors
     public const string InvalidLocale = "identity:invalid_locale";     // ar|en only at P1 (FR-06)
     public const string LastAdmin = "identity:last_admin";
     public const string SelfDelete = "identity:self_delete";
+    public const string InvalidCredentials = "identity:invalid_credentials";
+    public const string LoginBackoff = "identity:login_backoff";
 }

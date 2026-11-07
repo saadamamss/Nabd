@@ -1,12 +1,9 @@
 namespace Nabd.ApiHost.Controllers;
 
-using System.Text.Json;
 using Microsoft.AspNetCore.Mvc;
 using Nabd.ApiHost.Auth;
 using Nabd.Identity.Contracts;
 
-
-public sealed record DevCallerJson(Guid UserId, Guid TenantId, string[] RoleCodes);
 public sealed record RoleChangeJson(string Role);
 public sealed record LocaleUpdateJson(string Locale);
 
@@ -26,7 +23,7 @@ public sealed class IdentityController(ITenantRegistration registration, IUserMa
     [HttpPost("{tenantId:guid}/users")]
     public async Task<IActionResult> CreateUser(Guid tenantId, [FromBody] NewUserRequest body, CancellationToken ct)
     {
-        var caller = ReadDevCaller();
+        var caller = DevCaller.Read(Request);
         if (caller is null) return Unauthorized();
 
         var request = body with { TargetTenantId = tenantId };
@@ -40,7 +37,7 @@ public sealed class IdentityController(ITenantRegistration registration, IUserMa
     [HttpGet("{tenantId:guid}")]
     public async Task<IActionResult> GetTenant(Guid tenantId, CancellationToken ct)
     {
-        var caller = ReadDevCaller();
+        var caller = DevCaller.Read(Request);
 
         if (caller is null) return Unauthorized();
 
@@ -53,7 +50,7 @@ public sealed class IdentityController(ITenantRegistration registration, IUserMa
     [HttpGet("{tenantId:guid}/users")]
     public async Task<IActionResult> ListUsers(Guid tenantId, CancellationToken ct)
     {
-        var caller = ReadDevCaller();
+        var caller = DevCaller.Read(Request);
 
         if (caller is null) return Unauthorized();
 
@@ -66,7 +63,7 @@ public sealed class IdentityController(ITenantRegistration registration, IUserMa
     [HttpDelete("{tenantId:guid}/users/{userId:guid}")]
     public async Task<IActionResult> DeleteUser(Guid tenantId, Guid userId, CancellationToken ct)
     {
-        var caller = ReadDevCaller();
+        var caller = DevCaller.Read(Request);
 
         if (caller is null) return Unauthorized();
 
@@ -79,7 +76,7 @@ public sealed class IdentityController(ITenantRegistration registration, IUserMa
     [HttpPatch("{tenantId:guid}/users/{userId:guid}/roles")]
     public async Task<IActionResult> SetUserRole(Guid tenantId, Guid userId, [FromBody] RoleChangeJson body, CancellationToken ct)
     {
-        var caller = ReadDevCaller();
+        var caller = DevCaller.Read(Request);
 
         if (caller is null) return Unauthorized();
 
@@ -92,41 +89,13 @@ public sealed class IdentityController(ITenantRegistration registration, IUserMa
     [HttpPatch("{tenantId:guid}/users/{userId:guid}/locale")]
     public async Task<IActionResult> SetUserLocale(Guid tenantId, Guid userId, [FromBody] LocaleUpdateJson body, CancellationToken ct)
     {
-        var caller = ReadDevCaller();
+        var caller = DevCaller.Read(Request);
 
         if (caller is null) return Unauthorized();
 
         var result = await users.SetUserLocaleAsync(caller, new UserLocaleUpdateRequest(tenantId, userId, body.Locale), ct);
 
         return result.IsSuccess ? Ok(result.Value) : Translate(result.Error!);
-    }
-
-    private static readonly JsonSerializerOptions JsonOpts = new() { PropertyNameCaseInsensitive = true };
-
-    [ApiExplorerSettings(IgnoreApi = true)]
-    private CallerContext? ReadDevCaller()
-    {
-        if (Environment.GetEnvironmentVariable("NABD_DEV_FAKE_AUTH") != "true")
-        {
-            return null;
-        }
-
-        var header = Request.Headers["X-Nabd-Dev-Caller"].FirstOrDefault();
-
-        if (string.IsNullOrEmpty(header)) return null;
-
-        try
-        {
-            var json = JsonSerializer.Deserialize<DevCallerJson>(header, JsonOpts);
-            if (json is null) return null;
-
-            return new CallerContext(json.UserId, json.TenantId, json.RoleCodes);
-        }
-        catch (JsonException)
-        {
-            return null;
-        }
-
     }
 
     private IActionResult Translate(string error) => error switch
