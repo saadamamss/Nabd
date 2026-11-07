@@ -55,6 +55,11 @@ services:
     restart: unless-stopped
     profiles: [mqtt]         # starts only with --profile mqtt (P3+)
     mem_limit: 1g
+    environment:
+      # Erlang scheduler busy-wait OFF — the default spins one CPU core at ~100%
+      # while fully idle (the ever-running-laptop-fan offender). None of these
+      # change behaviour for dev workloads; latency impact is negligible here.
+      ERL_FLAGS: "+sbwt none +sbwtdcpu none +sbwtdio none"
     ports:
       - "127.0.0.1:1883:1883"      # MQTT (dev plaintext)
       - "127.0.0.1:18083:18083"    # Dashboard (user EMQX/dashboard… change password!)
@@ -80,6 +85,8 @@ services:
     environment:
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
+      # Same Erlang spin-wait cure as EMQX above (RabbitMQ is an Erlang node too).
+      ERL_FLAGS: "+sbwt none +sbwtdcpu none +sbwtdio none"
     ports:
       - "127.0.0.1:5672:5672"      # AMQP
       - "127.0.0.1:15672:15672"    # Management UI
