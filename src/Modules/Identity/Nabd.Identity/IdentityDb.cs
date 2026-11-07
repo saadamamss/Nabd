@@ -63,4 +63,9 @@ public sealed class IdentityDb
         cmd.Parameters.AddWithValue("tid", tenantId);
         await cmd.ExecuteNonQueryAsync(ct);
     }
+
+    public async Task<NpgsqlConnection> OpenPreAuthConnectionAsync(CancellationToken ct = default)
+    {
+        return await _dataSource.OpenConnectionAsync(ct);
+    }
 }

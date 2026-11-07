@@ -5,6 +5,8 @@ using Nabd.Assets.Contracts;
 using Nabd.Identity;
 using Nabd.Identity.Contracts;
 
+_ = Nabd.Identity.EnumerationArmor.BurnHash;
+
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddControllers().AddJsonOptions(o =>
@@ -20,7 +22,8 @@ builder.Services.AddSingleton<IDeviceRegistry, InMemoryDeviceRegistry>();
 builder.Services.AddSingleton<IdentityDb>();
 builder.Services.AddSingleton<ITenantRegistration, TenantRegistration>();
 builder.Services.AddSingleton<IUserManagement, UserManagement>();
-
+builder.Services.AddSingleton<LoginThrottle>();
+builder.Services.AddSingleton<IUserAuthentication, UserAuthentication>();
 // Health endpoints (ADR-010; 08 §6): liveness = process up.
 // Readiness expands in P1+ to probe DB, queue and broker session (08 §6 readiness list).
 builder.Services.AddHealthChecks();

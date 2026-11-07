@@ -27,17 +27,22 @@ public static class PasswordHasher
 
     public static bool Verify(string password, string stored)
     {
-        // parse; anything malformed counts as a failed match (fail-shut, no exceptions out)
-        var parts = stored.Split('$');
-        if (parts.Length != 6) return false;
+        // parse; anything malformed counts as a failed match (fail-shut, no exceptions out).
+        // RemoveEmptyEntries: PHC strings exist BOTH with a leading '$' (standard) and
+        // without (our Hash's older emission) — after cleanup both are 5 parts:
+        // [0]=argon2id, [1]=v=19, [2]=m=,t=,p=, [3]=salt, [4]=hash.
+        // (Spec-03 ladder catch: the 6-part expectation made EVERY verify fail-fast —
+        //  a correct password was rejected in 0.002s; nobody guessed until login existed.)
+        var parts = stored.Split('$', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length != 5 || parts[0] != "argon2id") return false;
 
-        var memory = ParseParam(parts[3], 'm');
-        var time   = ParseParam(parts[3], 't');
-        var lanes  = ParseParam(parts[3], 'p');
+        var memory = ParseParam(parts[2], 'm');
+        var time   = ParseParam(parts[2], 't');
+        var lanes  = ParseParam(parts[2], 'p');
         if (memory is null || time is null || lanes is null) return false;
 
-        var salt = Convert.FromBase64String(parts[4]);
-        var expected = Convert.FromBase64String(parts[5]);
+        var salt = Convert.FromBase64String(parts[3]);
+        var expected = Convert.FromBase64String(parts[4]);
         var actual = ComputeExact(password, salt, memory.Value, time.Value, lanes.Value);
 
         // constant-time compare regardless of mismatch position (plan/07 §4 note)
