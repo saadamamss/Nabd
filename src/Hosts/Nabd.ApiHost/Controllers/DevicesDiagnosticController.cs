@@ -1,17 +1,21 @@
 using Microsoft.AspNetCore.Mvc;
+using Nabd.ApiHost.Auth;
 using Nabd.Assets.Contracts;
+using Nabd.Identity.Contracts;
 
 namespace Nabd.ApiHost.Controllers;
 
 /// <summary>
 /// Diagnostic controller for P0: proves rooms + hosts + contracts are wired end-to-end.
 /// Real asset/device APIs (CRUD, tokens, archive) are the P2 slice set (10 §3).
-/// Auth is added in P1 — this endpoint is development-only until then.
+/// Auth arrives in spec 04 (P1): API-layer wall only — the service-layer
+/// tenant assert defers to P2 with the real devices API (log note in phases/P1/NOTES.md).
 /// </summary>
 [ApiController]
 [Route("api/diag/devices")]
 public sealed class DevicesDiagnosticController(IDeviceRegistry registry) : ControllerBase
 {
+    [TenantAdmin(Operations.DeviceRegister)]
     [HttpPost]
     public async Task<IActionResult> Register([FromBody] RegisterDeviceRequest request, CancellationToken ct)
     {
@@ -19,6 +23,7 @@ public sealed class DevicesDiagnosticController(IDeviceRegistry registry) : Cont
         return CreatedAtAction(nameof(Get), new { deviceId = device.DeviceId }, device);
     }
 
+    [Viewer(Operations.DeviceRead)]
     [HttpGet("{deviceId:guid}")]
     public async Task<IActionResult> Get(Guid deviceId, CancellationToken ct)
     {

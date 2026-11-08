@@ -108,8 +108,9 @@ public sealed class TenantRegistration : ITenantRegistration
 
     public async Task<Result<TenantSnapshot>> GetTenantAsync(CallerContext acting, Guid tenantId, CancellationToken ct = default)
     {
-        if (acting.TenantId != tenantId) return Result<TenantSnapshot>.Failure(IdentityErrors.CrossTenantTarget);
-
+        var forbidden = PermissionMatrix.Assert(acting, Operations.TenantRead, tenantId);
+        if (forbidden is not null) return Result<TenantSnapshot>.Failure(forbidden);
+        
         var (conn, tx) = await _db.OpenTenantScopeAsync(tenantId, ct);
 
         try

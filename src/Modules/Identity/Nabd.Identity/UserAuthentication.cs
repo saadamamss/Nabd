@@ -165,14 +165,8 @@ public sealed class UserAuthentication : IUserAuthentication
     public async Task<Result<Unit>> ChangePasswordAsync(CallerContext acting, Guid tenantId, Guid userId, ChangePasswordRequest request, CancellationToken ct = default)
     {
 
-        if (acting.UserId != userId)
-        {
-            return Result<Unit>.Failure(IdentityErrors.Forbidden);
-        }
-        if (acting.TenantId != tenantId)
-        {
-            return Result<Unit>.Failure(IdentityErrors.CrossTenantTarget);
-        }
+        string? forbidden = PermissionMatrix.AssertSelf(acting, Operations.PasswordChange, tenantId, userId);
+        if (forbidden is not null) return Result<Unit>.Failure(forbidden);
 
         if (string.IsNullOrWhiteSpace(request.CurrentPassword) || request.NewPassword is null || request.NewPassword.Length < 8)
         {

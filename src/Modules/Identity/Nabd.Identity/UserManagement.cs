@@ -25,7 +25,7 @@ public sealed class UserManagement : IUserManagement
         CallerContext acting, NewUserRequest request, CancellationToken ct = default)
     {
         // ---- layer 2 asserts (07 §5): management is tenant_admin work, OWN tenant only ----
-        var forbidden = AssertCanManage(acting, request.TargetTenantId);
+        var forbidden = PermissionMatrix.Assert(acting, Operations.UserCreate, request.TargetTenantId);
         if (forbidden is not null) return Result<UserSnapshot>.Failure(forbidden);
 
         if (request.RoleCode is not ("viewer" or "tenant_admin"))
@@ -88,8 +88,9 @@ public sealed class UserManagement : IUserManagement
 
     public async Task<Result<IReadOnlyList<UserSnapshot>>> ListUsersAsync(CallerContext acting, Guid tenantId, CancellationToken ct = default)
     {
-        if (acting.TenantId != tenantId) return Result<IReadOnlyList<UserSnapshot>>.Failure(IdentityErrors.CrossTenantTarget);
-
+        var forbidden = PermissionMatrix.Assert(acting, Operations.UserRead, tenantId);
+        if (forbidden is not null) return Result<IReadOnlyList<UserSnapshot>>.Failure(forbidden);
+        
         var (conn, tx) = await _db.OpenTenantScopeAsync(tenantId, ct);
 
         try
@@ -132,7 +133,7 @@ public sealed class UserManagement : IUserManagement
     public async Task<Result<UserSnapshot>> SetUserRoleAsync(
         CallerContext acting, UserRoleChangeRequest request, CancellationToken ct = default)
     {
-        var forbidden = AssertCanManage(acting, request.TargetTenantId);
+        var forbidden = PermissionMatrix.Assert(acting,Operations.UserRoleSet, request.TargetTenantId);
         if (forbidden is not null) return Result<UserSnapshot>.Failure(forbidden);
 
         if (request.RoleCode is not ("viewer" or "tenant_admin"))
@@ -193,10 +194,13 @@ public sealed class UserManagement : IUserManagement
     {
         // locale is self-service: a user changes THEIR OWN preference; tenant_admin changes
         // anyone's INSIDE the tenant. Anything else is redesign tomorrow, not permissive code today.
-        var isSelf = acting.UserId == request.TargetUserId;
-        var isAdmin = acting.RoleCodes.Contains("tenant_admin") && acting.TenantId == request.TargetTenantId;
-        if (!isSelf && !isAdmin)
-            return Result<UserSnapshot>.Failure(IdentityErrors.Forbidden);
+        string? forbidden = acting.UserId == request.TargetUserId
+            ? PermissionMatrix.AssertSelf(acting, Operations.UserLocaleSet,
+                request.TargetTenantId, request.TargetUserId)
+            : PermissionMatrix.Assert(acting, Operations.UserLocaleSetOthers,
+                request.TargetTenantId);
+        if (forbidden is not null) return Result<UserSnapshot>.Failure(forbidden);
+
         if (request.Locale is not ("ar" or "en"))
             return Result<UserSnapshot>.Failure(IdentityErrors.InvalidLocale);
 
@@ -230,8 +234,9 @@ public sealed class UserManagement : IUserManagement
     public async Task<Result<Unit>> DeleteUserAsync(
         CallerContext acting, Guid targetTenantId, Guid targetUserId, CancellationToken ct = default)
     {
-        var forbidden = AssertCanManage(acting, targetTenantId);
+        var forbidden = PermissionMatrix.Assert(acting, Operations.UserDelete, targetTenantId);
         if (forbidden is not null) return Result<Unit>.Failure(forbidden);
+
         if (targetUserId == acting.UserId)
             return Result<Unit>.Failure(IdentityErrors.SelfDelete); // no admin removes themselves into a locked office
 
@@ -270,15 +275,6 @@ public sealed class UserManagement : IUserManagement
     }
 
     // ---- helpers ----
-
-    private static string? AssertCanManage(CallerContext acting, Guid targetTenantId)
-    {
-        if (!acting.RoleCodes.Contains("tenant_admin"))
-            return IdentityErrors.Forbidden;               // verb check BEFORE anything else
-        if (acting.TenantId != targetTenantId)
-            return IdentityErrors.CrossTenantTarget;       // target in another tenant = never visible
-        return null;
-    }
 
     private static async Task<bool> ExistsAsync(
         NpgsqlConnection conn, NpgsqlTransaction tx, string sql, string value, CancellationToken ct)
