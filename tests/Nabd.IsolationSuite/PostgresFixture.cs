@@ -113,7 +113,8 @@ public sealed class PostgresFixture : IAsyncLifetime
         Environment.SetEnvironmentVariable("NABD_DB_NAME", "nabd");
         Environment.SetEnvironmentVariable("NABD_APP_DB_USER", "nabd_app");
         Environment.SetEnvironmentVariable("NABD_APP_DB_PASSWORD", "suite-local-password");
-
+        Environment.SetEnvironmentVariable("NABD_TOKEN_PEPPER", "suite-local-pepper");
+        Environment.SetEnvironmentVariable("NABD_JWT_SECRET", "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f");
         // 7) the app lane — same constructor the API uses, now pointed at the container
         Db = new IdentityDb();
     }
