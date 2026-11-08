@@ -67,10 +67,12 @@ services:
       - nabd-emqx-data:/opt/emqx/data
       - nabd-emqx-log:/opt/emqx/log
     healthcheck:
-      test: ["CMD", "emqx", "ctl", "status"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
+      # Budget note (2026-11-08): `emqx ctl status` is a heavy Erlang call — bursty
+      # CPU spikes every 5 s. TCP connect to the MQTT listener is the cheap dev probe.
+      test: ["CMD-SHELL", "timeout 2 bash -c '</dev/tcp/localhost/1883' || exit 1"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
     networks: [nabd-dev]
 
   # ── RabbitMQ — the ingestion buffer CANDIDATE (ADR-005) ─────────────────
@@ -93,10 +95,13 @@ services:
     volumes:
       - nabd-rabbitmq-data:/var/lib/rabbitmq
     healthcheck:
-      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
+      # Budget note (2026-11-08): `rabbitmq-diagnostics ping` boots a 2nd Erlang VM
+      # each call — bursts to ~150% CPU every 5 s = the laptop-fan metronome.
+      # A plain TCP connect to the AMQP listener is the cheap dev probe.
+      test: ["CMD-SHELL", "timeout 2 bash -c '</dev/tcp/localhost/5672' || exit 1"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
     networks: [nabd-dev]
 
   # Composition-root hosts join compose later in P0 as their Dockerfiles land
