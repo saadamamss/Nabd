@@ -2,6 +2,7 @@ namespace Nabd.IsolationSuite;
 
 using System.Reflection;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Authorization.Infrastructure;
 using Microsoft.AspNetCore.Mvc;
 using Nabd.ApiHost.Auth;
 using Nabd.Identity.Contracts;
@@ -18,15 +19,10 @@ using Xunit;
 
 public sealed class RouteWallTests
 {
-    // policy string → every role whose JWT makes the policy pass. Mirrors
-    // Program.cs's RequireRole lines; if Program widens a policy without
-    // widening the matrix this test goes red (drift detector).
-    private static readonly Dictionary<string, string[]> PolicyAdmits = new()
-    {
-        [Policies.Viewer] = ["viewer", "tenant_admin", "platform_admin"],
-        [Policies.TenantAdmin] = ["tenant_admin", "platform_admin"],
-        [Policies.PlatformAdmin] = ["platform_admin"],
-    };
+    // The admitted-role table IS the host's own PolicyBook — no test-side copy
+    // (law #27). This test's remaining job: no policy admits a role the matrix
+    // would refuse, i.e. the matrix is always ≥ the doors.
+    private static IReadOnlyDictionary<string, string[]> PolicyAdmits => PolicyBook.Admits;
 
     private static IEnumerable<(string Where, MethodInfo Action)> Actions() =>
         // seed via a HOST type — the assembler of the seed decides the assembly;
@@ -111,5 +107,24 @@ public sealed class RouteWallTests
         }
 
         Assert.True(failures.Count == 0, string.Join('\n', failures));
+    }
+
+    // ---- fact 4: the deny-by-default net is actually armed ---------------------
+    // (the attributes-without-registry mirror: walls named + no registry = 500
+    // at runtime; the fallback must exist and refuse anonymous callers)
+
+    [Fact]
+    public void the_policy_book_arms_every_wall_and_a_fallback()
+    {
+        var options = new AuthorizationOptions();
+        PolicyBook.Register(options);
+
+        Assert.Equal(
+            ["platform_admin", Policies.TenantAdmin, Policies.Viewer],
+            PolicyBook.Admits.Keys.OrderBy(k => k).ToArray());
+
+        Assert.NotNull(options.FallbackPolicy);
+        Assert.Contains(options.FallbackPolicy!.Requirements,
+            r => r is DenyAnonymousAuthorizationRequirement);
     }
 }

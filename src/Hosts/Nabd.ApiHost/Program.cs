@@ -26,6 +26,10 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         o.TokenValidationParameters = JwtWall.Parameters();
     });
 
+// The walls' policy registry — from PolicyBook, one definition (spec 04):
+// viewer/tenant_admin/platform_admin + FallbackPolicy deny-by-default.
+builder.Services.AddAuthorization(PolicyBook.Register);
+
 // ===== Room wiring (composition root — the ONLY place impl assemblies are touched) =====
 // P0: Assets' in-memory stub. P1/P2 swap implementations behind the same contracts.
 builder.Services.AddSingleton<IDeviceRegistry, InMemoryDeviceRegistry>();
