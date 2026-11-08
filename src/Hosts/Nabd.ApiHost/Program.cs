@@ -1,9 +1,10 @@
 using System.Text.Json.Serialization;
-using Microsoft.AspNetCore.Mvc;
 using Nabd.Assets;
 using Nabd.Assets.Contracts;
 using Nabd.Identity;
 using Nabd.Identity.Contracts;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Nabd.ApiHost.Auth;
 
 _ = Nabd.Identity.EnumerationArmor.BurnHash;
 
@@ -15,6 +16,15 @@ builder.Services.AddControllers().AddJsonOptions(o =>
     o.JsonSerializerOptions.DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull;
 });
 builder.Services.AddOpenApi();
+
+// JWT wall (spec 04): parameters live in JwtWall — one definition, shared
+// with the suite; the suite green and the host's runtime view cannot drift.
+builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddJwtBearer(o =>
+    {
+        JwtWall.StopInboundClaimRename();
+        o.TokenValidationParameters = JwtWall.Parameters();
+    });
 
 // ===== Room wiring (composition root — the ONLY place impl assemblies are touched) =====
 // P0: Assets' in-memory stub. P1/P2 swap implementations behind the same contracts.
@@ -36,6 +46,8 @@ if (app.Environment.IsDevelopment())
 }
 
 app.MapControllers();
+app.UseAuthentication();
+app.UseAuthorization();
 
 app.MapHealthChecks("/health/live");
 

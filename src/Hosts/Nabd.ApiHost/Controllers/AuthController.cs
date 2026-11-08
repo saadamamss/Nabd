@@ -1,5 +1,6 @@
 namespace Nabd.ApiHost.Controllers;
 
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Nabd.ApiHost.Auth;
 using Nabd.Identity.Contracts;
@@ -17,6 +18,7 @@ public sealed record JsonPasswordChange(string CurrentPassword, string NewPasswo
 [Route("api/v1/auth")]
 public sealed class AuthController(IUserAuthentication auth) : ControllerBase
 {
+    [AllowAnonymous]
     [HttpPost("login")]
     public async Task<IActionResult> Login([FromBody] JsonLogin body, CancellationToken ct)
     {
@@ -24,6 +26,7 @@ public sealed class AuthController(IUserAuthentication auth) : ControllerBase
         return result.IsSuccess ? Ok(result.Value) : Translate(result.Error!);
     }
 
+    [AllowAnonymous]
     [HttpPost("refresh")]
     public async Task<IActionResult> Refresh([FromBody] JsonRefresh body, CancellationToken ct)
     {
@@ -31,6 +34,7 @@ public sealed class AuthController(IUserAuthentication auth) : ControllerBase
         return result.IsSuccess ? Ok(result.Value) : Translate(result.Error!);
     }
 
+    [AllowAnonymous]
     [HttpPost("logout")]
     public async Task<IActionResult> Logout([FromBody] JsonRefresh body, CancellationToken ct)
     {
@@ -38,9 +42,10 @@ public sealed class AuthController(IUserAuthentication auth) : ControllerBase
         return result.IsSuccess ? NoContent() : Translate(result.Error!);
     }
 
+    [Viewer(Operations.PasswordChange)]
     [HttpPatch("{tenantId:guid}/users/{userId:guid}/password")]
     public async Task<IActionResult> ChangePassword(Guid tenantId, Guid userId, [FromBody] JsonPasswordChange body, CancellationToken ct){
-        var caller = DevCaller.Read(Request);
+        var caller = Caller.FromUser(User);
         if (caller is null) return Unauthorized();
 
         var result = await auth.ChangePasswordAsync(caller, tenantId, userId, new ChangePasswordRequest(body.CurrentPassword, body.NewPassword), ct);

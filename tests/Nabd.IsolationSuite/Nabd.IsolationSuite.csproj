@@ -22,6 +22,14 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Modules\Identity\Nabd.Identity\Nabd.Identity.csproj" />
+    <!-- spec 04: the suite inspects the HOST's walls (route coverage + JwtWall) -->
+    <ProjectReference Include="..\..\src\Hosts\Nabd.ApiHost\Nabd.ApiHost.csproj" />
+  </ItemGroup>
+
+  <!-- FrameworkReference does NOT flow transitively from a ProjectReference —
+       the suite speaks ClaimsPrincipal/Authorize because it inspects them. -->
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
   </ItemGroup>
 
 </Project>
