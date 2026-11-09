@@ -37,7 +37,14 @@ public sealed class AuthWallTests(PostgresFixture pg) : IClassFixture<PostgresFi
         return result.Value;
     }
 
-    private UserAuthentication NewAuth() => new(pg.Db, new LoginThrottle());
+    private UserAuthentication NewAuth(IEmailSender? sender = null) =>
+        new(pg.Db, new LoginThrottle(), sender ?? new NullSender());
+
+    // spec 05 grew the constructor: auth facts that never touch email pass a silent box
+    private sealed class NullSender : IEmailSender
+    {
+        public Task SendAsync(EmailMessage message, CancellationToken ct = default) => Task.CompletedTask;
+    }
 
     // ---- fact 1: the denial wall (plan/07 §3 row 7) -------------------------
 
