@@ -11,11 +11,13 @@ public sealed class UserAuthentication : IUserAuthentication
 {
     private readonly IdentityDb _db;
     private readonly LoginThrottle _throttle;
-
-    public UserAuthentication(IdentityDb db, LoginThrottle throttle)
+    private readonly IEmailSender _sender;
+    
+    public UserAuthentication(IdentityDb db, LoginThrottle throttle, IEmailSender sender)
     {
         _db = db;
         _throttle = throttle;
+        _sender = sender;
     }
 
     public async Task<Result<LoginResult>> LoginAsync(LoginRequest request, CancellationToken ct = default)
@@ -227,6 +229,163 @@ public sealed class UserAuthentication : IUserAuthentication
         {
             await conn.DisposeAsync();
         }
+    }
+
+    public async Task<Result<Unit>> RequestPasswordResetAsync(ResetPasswordRequest request, CancellationToken ct = default)
+    {
+        var email = request.Email?.Trim().ToLowerInvariant();
+
+        if (string.IsNullOrWhiteSpace(email)) return Result<Unit>.Success(Unit.Value);
+
+        var key = $"ip:{request.ClientIp ?? "unknown"}|account:{email}";
+        _throttle.RecordFailure(key);
+        var band = _throttle.DelaySeconds(key);
+
+        if (band > 0) return Result<Unit>.Failure($"{IdentityErrors.LoginBackoff}:{band}");
+
+        Guid? userId = null, tenantId = null;
+        string? locale = null;
+
+        await using (var conn = await _db.OpenPreAuthConnectionAsync(ct))
+        {
+
+            await using var cmd = new NpgsqlCommand("SELECT user_id, tenant_id, locale FROM identity.find_login_user(@email)", conn);
+            cmd.Parameters.AddWithValue("email", email);
+
+            await using var reader = await cmd.ExecuteReaderAsync(ct);
+
+            if (await reader.ReadAsync(ct))
+            {
+                userId = reader.GetGuid(0);
+                tenantId = reader.GetGuid(1);
+                locale = reader.GetString(2);
+            }
+        }
+
+        if (userId is not null && tenantId is not null && locale is not null)
+        {           
+            var presented = PasswordResetTokenMint.New();
+
+        var (tconn, tTx) = await _db.OpenTenantScopeAsync(tenantId.Value, ct);
+        try
+        {
+            await using var  insert = new NpgsqlCommand(""""
+                INSERT INTO identity.password_reset_tokens (user_id, token_hash, expires_at)
+                VALUES (@u, @h, now() + @ttl);
+            """", tconn, tTx);
+
+            insert.Parameters.AddWithValue("u", userId.Value);
+            insert.Parameters.AddWithValue("h", PasswordResetTokenMint.Hash(presented));
+            insert.Parameters.AddWithValue("ttl", PasswordResetTokenMint.Ttl);
+
+            await insert.ExecuteNonQueryAsync(ct);
+            await tTx.CommitAsync(ct);
+
+        } catch {
+            await tTx.RollbackAsync(ct);
+            throw;
+         } finally
+            {
+                await tconn.DisposeAsync();
+            }
+        
+        var (subject, body) = ResetMailTemplate.Render(locale, presented);
+
+        await _sender.SendAsync(new EmailMessage(email, subject, body), ct);
+
+        }
+
+        EnumerationArmor.Burn("nabd:reset-request-burn");
+        return Result<Unit>.Success(Unit.Value);
+        
+    }
+    
+    public async Task<Result<Unit>> ConfirmPasswordResetAsync(ResetConfirmRequest request, CancellationToken ct = default)
+    {
+        var presented = request.Token?.Trim();
+        var NewPassword = request.NewPassword?.Trim();
+        if(NewPassword is null || NewPassword.Length < 8) return Result<Unit>.Failure(IdentityErrors.WeakPassword);
+
+        if(string.IsNullOrWhiteSpace(presented)) return Result<Unit>.Failure(IdentityErrors.ResetTokenDead);
+
+
+        var hash = PasswordResetTokenMint.Hash(presented);
+
+        (Guid UserId, Guid TenantId, DateTimeOffset ExpiresAt, DateTimeOffset? UsedAt)? row = null;
+
+
+        await using (var conn = await _db.OpenPreAuthConnectionAsync(ct))
+        {
+            await using var cmd = new NpgsqlCommand("SELECT user_id, tenant_id, expires_at, used_at FROM identity.find_reset_token(@h)",conn);
+
+            cmd.Parameters.AddWithValue("h", hash);
+
+            await using var reader = await cmd.ExecuteReaderAsync(ct);
+            
+            if(await reader.ReadAsync(ct))
+            {
+                row = (
+                  reader.GetGuid(0),
+                  reader.GetGuid(1),
+                  reader.GetFieldValue<DateTimeOffset>(2),
+                  reader.IsDBNull(3)? null : reader.GetFieldValue<DateTimeOffset>(3)
+                );
+            }
+        }
+
+        if(row is null || row.Value.UsedAt is not null || row.Value.ExpiresAt <= DateTimeOffset.UtcNow)
+        {
+            return Result<Unit>.Failure(IdentityErrors.ResetTokenDead);
+        }
+
+        var (tConn, tTx) = await _db.OpenTenantScopeAsync(row.Value.TenantId, ct);
+        try
+        {
+            await using (var setPassword = new NpgsqlCommand(
+                "UPDATE identity.users SET password_hash = @h WHERE id = @u;", tConn, tTx
+            ))
+            {
+                setPassword.Parameters.AddWithValue("h", PasswordHasher.Hash(NewPassword));
+                setPassword.Parameters.AddWithValue("u", row.Value.UserId);
+                await setPassword.ExecuteNonQueryAsync(ct);
+            }
+
+            await using (var consume = new NpgsqlCommand(
+                "UPDATE identity.password_reset_tokens SET used_at = now() WHERE token_hash = @h AND used_at IS NULL;", tConn, tTx
+            ))
+            {
+                consume.Parameters.AddWithValue("h", hash);
+
+                var consumed = await consume.ExecuteNonQueryAsync(ct);
+                if(consumed != 1)
+                {
+                    await tTx.RollbackAsync(ct);
+                    return Result<Unit>.Failure(IdentityErrors.ResetTokenDead);
+                }
+            }
+
+            await using (var revoke = new NpgsqlCommand(
+                "UPDATE identity.refresh_tokens SET revoked_at = now() WHERE user_id = @u AND revoked_at IS NULL;", tConn, tTx
+            ))
+            {
+                revoke.Parameters.AddWithValue("u", row.Value.UserId);
+                await revoke.ExecuteNonQueryAsync(ct);
+            }
+
+            await tTx.CommitAsync(ct);
+            
+        return Result<Unit>.Success(Unit.Value);
+        }
+        catch (System.Exception)
+        {
+            await tTx.RollbackAsync(ct);
+            throw;
+        }
+        finally
+        {
+            await tConn.DisposeAsync();
+        }
+
     }
     // Helpers
 

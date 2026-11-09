@@ -8,6 +8,8 @@ using Nabd.Identity.Contracts;
 public sealed record JsonLogin(string Email, string Password);
 public sealed record JsonRefresh(string RefreshToken);
 public sealed record JsonPasswordChange(string CurrentPassword, string NewPassword);
+public sealed record JsonResetRequest(string Email);
+public sealed record JsonResetConfirm(string token, string NewPassword);
 /// <summary>
 /// The pre-auth doors (P1 spec 03): login / refresh / logout. No caller context,
 /// no dev-caller lane, no role attributes — proof here is credentials only.
@@ -53,6 +55,25 @@ public sealed class AuthController(IUserAuthentication auth) : ControllerBase
         return result.IsSuccess ? NoContent() : Translate(result.Error!); // Error! is the established controller-side contract (mirrors IdentityController)
     }
 
+    [AllowAnonymous]
+    [HttpPost("reset-password")]
+    public async Task<IActionResult> ResetRequest([FromBody] JsonResetRequest body, CancellationToken ct = default)
+    {
+        var result = await auth.RequestPasswordResetAsync(new ResetPasswordRequest(body.Email, Request.HttpContext.Connection.RemoteIpAddress?.ToString()));
+
+        return result.IsSuccess? NoContent() : Translate(result.Error!);
+    }
+
+    [AllowAnonymous]
+    [HttpPost("reset-confirm")]
+    public async Task<IActionResult> ResetConfirm([FromBody] JsonResetConfirm body, CancellationToken ct = default)
+    {
+        var result = await auth.ConfirmPasswordResetAsync(new ResetConfirmRequest(body.token, body.NewPassword), ct);    
+    
+        return result.IsSuccess? NoContent() : Translate(result.Error!);
+    }
+
+
     // plan/07 §3 row 7: ONE legal auth-denial body (identical on wrong email & wrong password).
     // plan/07 §3 row 5: backoff answers 429 — the service composes "code:<band>"; parse the band.
     private IActionResult Translate(string error) => error switch
@@ -63,6 +84,8 @@ public sealed class AuthController(IUserAuthentication auth) : ControllerBase
             code = IdentityErrors.LoginBackoff,
             delaySeconds = int.TryParse(error.Split(':')[^1], out var band) ? band : 0,
         }),
+        IdentityErrors.ResetTokenDead => StatusCode(410, new { code = error }),
+        IdentityErrors.WeakPassword => BadRequest(new { code = error }),
         _ => BadRequest(new { code = error }),
     };
 }
