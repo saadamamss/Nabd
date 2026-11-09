@@ -32,7 +32,9 @@ public static class RefreshTokenMint
 
     private static string Base64Url(byte[] bytes)
     {
-        return Convert.ToBase64String(bytes).TrimEnd().Replace("+", "-").Replace("/", "_");
+        // TrimEnd('=') NOT '()' — the padding char must not ride in a URL
+        // (RFC 4648 §5 unpadded base64url; standard = 43 chars for 32 bytes).
+        return Convert.ToBase64String(bytes).TrimEnd('=').Replace("+", "-").Replace("/", "_");
     }
 }
 
@@ -42,4 +44,17 @@ public static class EnumerationArmor
     public static readonly string BurnHash = PasswordHasher.Hash("nabd:armor-burn");
 
     public static bool Burn(string password) => PasswordHasher.Verify(password, BurnHash);
+}
+
+/// <summary>
+/// Password-reset tokens (P1 spec 05; plan/07 §3 row 4): the SAME 256-bit
+/// machinery as refresh tokens (New/Hash — one machinery, two lives), the
+/// DIFFERENCE is the lifetime: 15 minutes, and a token exists to be used
+/// exactly once.
+/// </summary>
+public static class PasswordResetTokenMint
+{
+    public static TimeSpan Ttl => TimeSpan.FromMinutes(15);
+    public static string New() => RefreshTokenMint.New();
+    public static string Hash(string presented) => RefreshTokenMint.Hash(presented);
 }

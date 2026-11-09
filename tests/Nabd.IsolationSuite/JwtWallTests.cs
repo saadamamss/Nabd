@@ -62,6 +62,40 @@ public sealed class JwtWallTests
     private static ClaimsPrincipal Validate(string token) =>
         new JwtSecurityTokenHandler().ValidateToken(token, JwtWall.Parameters(), out _);
 
+    // law #31, hardened 2026-11-09 after the live 403: the JwtBearer MIDDLEWARE
+    // runs JsonWebTokenHandler — its inbound map is a SEPARATE flag from the
+    // JwtSecurityTokenHandler one. A walls test that only walks the second
+    // handler can stay green while the host renames "roles" and answers 403.
+
+    [Fact]
+    public async Task the_middleware_side_handler_keeps_claims_verbatim()
+    {
+        // 2026-11-09 instrumentation: the middleware-side handler + Parameters()
+        // produce verbatim sub/tid/roles with RoleClaimType=roles — the earlier
+        // live-403 was an STALE RUNNING BINARY, not the claim map.
+        var token = Mint(userId: Guid.NewGuid(), tenantId: Guid.NewGuid(), role: "tenant_admin");
+
+        var identity = (await new Microsoft.IdentityModel.JsonWebTokens.JsonWebTokenHandler()
+            .ValidateTokenAsync(token, JwtWall.Parameters())).ClaimsIdentity;
+
+        Assert.Equal("roles", identity!.RoleClaimType);
+        Assert.Equal("tenant_admin", identity.FindFirst("roles")?.Value);
+    }
+
+    [Fact]
+    public void the_middleware_options_are_pinned_by_the_wall()
+    {
+        // JwtWall.Configure is THE one JwtBearerOptions definition: the
+        // MapInboundClaims pin + the parameters — Program consumes only it.
+        var options = new Microsoft.AspNetCore.Authentication.JwtBearer.JwtBearerOptions();
+        JwtWall.Configure(options);
+
+        Assert.False(options.MapInboundClaims);
+        Assert.Equal("nabd-identity", options.TokenValidationParameters.ValidIssuer);
+        Assert.Equal("nabd-api", options.TokenValidationParameters.ValidAudience);
+        Assert.Equal("roles", options.TokenValidationParameters.RoleClaimType);
+    }
+
     private static Guid MintUser() => Guid.NewGuid();
 
     // ---- the happy lane: verbatim claims, mapped exactly once ----------------

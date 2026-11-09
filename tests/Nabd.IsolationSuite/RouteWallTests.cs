@@ -78,7 +78,8 @@ public sealed class RouteWallTests
             .OrderBy(x => x)
             .ToList();
 
-        Assert.Equal(["Login", "Logout", "Refresh", "Register"], named);
+        // spec 05: the reset doors join the pre-auth club (reset_request/reset_confirm)
+        Assert.Equal(["Login", "Logout", "Refresh", "Register", "ResetConfirm", "ResetRequest"], named);
     }
 
     // ---- fact 3: policy never admits what the matrix denies (drift detector) ---

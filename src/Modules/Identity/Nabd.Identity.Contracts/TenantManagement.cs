@@ -52,16 +52,18 @@ public interface IUserManagement
 /// <summary>Stable error codes the API Host translates to HTTP + catalog text (05 §6 family).</summary>
 public static class IdentityErrors
 {
-    public const string EmailTaken        = "identity:email_taken";
-    public const string SlugTaken         = "identity:slug_taken";
-    public const string TenantNotFound    = "identity:tenant_not_found";
-    public const string UserNotFound      = "identity:user_not_found";
-    public const string RoleUnknown       = "identity:role_unknown";
-    public const string Forbidden         = "identity:forbidden";          // caller lacks the role for this op (07 §5)
+    public const string EmailTaken = "identity:email_taken";
+    public const string SlugTaken = "identity:slug_taken";
+    public const string TenantNotFound = "identity:tenant_not_found";
+    public const string UserNotFound = "identity:user_not_found";
+    public const string RoleUnknown = "identity:role_unknown";
+    public const string Forbidden = "identity:forbidden";          // caller lacks the role for this op (07 §5)
     public const string CrossTenantTarget = "identity:cross_tenant_target"; // target alive in another tenant
     public const string InvalidLocale = "identity:invalid_locale";     // ar|en only at P1 (FR-06)
     public const string LastAdmin = "identity:last_admin";
     public const string SelfDelete = "identity:self_delete";
     public const string InvalidCredentials = "identity:invalid_credentials";
     public const string LoginBackoff = "identity:login_backoff";
+    public const string ResetTokenDead = "identity:reset_token_dead";
+    public const string WeakPassword = "identity:weak_password";
 }
