@@ -65,7 +65,7 @@ public sealed class PlatformTenantAdmin : IPlatformTenantAdmin
     }
     public async Task<Result<Unit>> SetTenantActiveAsync(CallerContext acting, Guid targetTenantId, Boolean isActive, string action, CancellationToken ct)
     {
-        var deny = PermissionMatrix.Assert(acting, OperationOf(action), acting.TenantId);
+        var deny = PermissionMatrix.Assert(acting, OperationOf(action), targetTenantId);
         if (deny is not null)
         {
             Audit(acting, action, targetTenantId, "denied");
