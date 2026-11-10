@@ -128,4 +128,50 @@ public sealed class RouteWallTests
         Assert.Contains(options.FallbackPolicy!.Requirements,
             r => r is DenyAnonymousAuthorizationRequirement);
     }
+
+    // ---- fact 5 (spec 06): the fleet door is EXACTLY list/disable/enable -------
+    // The generic facts 1–3 would silently accept ANY admin surface; this pins
+    // the FR-61 shape itself: three doors, PlatformAdmin walls, the fleet
+    // operations from THE matrix constants (no copy), under one route prefix.
+
+    [Fact]
+    public void the_fleet_door_is_exactly_list_disable_enable_under_the_platform_route()
+    {
+        var doors = Actions()
+            .Where(a => a.Where.StartsWith("AdminController.", StringComparison.Ordinal))
+            .Select(a => a.Action)
+            .ToDictionary(d => d.Name, d => d);
+
+        Assert.Equal(["DisableTenant", "EnableTenant", "ListTenants"], doors.Keys.OrderBy(k => k).ToArray());
+
+        var expected = new (string Door, string Op, string Verb)[]
+        {
+            ("DisableTenant", Operations.TenantDisable, "Http"),
+            ("EnableTenant", Operations.TenantEnable, "Http"),
+            ("ListTenants", Operations.TenantList, "Http"),
+        };
+
+        foreach (var (door, operation, verb) in expected)
+        {
+            var m = doors[door];
+            var httpAttribute = m.GetCustomAttributes().First(a => a.GetType().Name.StartsWith(verb, StringComparison.Ordinal));
+            Assert.NotNull(httpAttribute);            // the door IS a real HTTP verb
+
+            var wall = m.GetCustomAttribute<AuthorizeAttribute>();
+            Assert.NotNull(wall);
+            Assert.Equal(Policies.PlatformAdmin, wall!.Policy);
+
+            var carried = m.GetCustomAttributes()
+                .Select(at => at.GetType().GetProperty("Operation") is { } p ? p.GetValue(at) as string : null)
+                .FirstOrDefault(o => o is not null);
+            Assert.Equal(operation, carried);        // the operation name is THE matrix constant
+            Assert.False(IsAllowAnonymous(m));        // and never anonymous (fact 2's club stays exact)
+        }
+
+        // the prefix it lives under — class-level [Route("api/v1/platform")], ONE definition
+        var prefix = typeof(Caller).Assembly.GetTypes()
+            .First(t => t.IsSubclassOf(typeof(ControllerBase)) && t.Name == "AdminController")
+            .GetCustomAttribute<RouteAttribute>()!.Template;
+        Assert.Equal("api/v1/platform", prefix);
+    }
 }

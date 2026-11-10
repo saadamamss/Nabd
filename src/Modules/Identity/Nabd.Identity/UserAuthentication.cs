@@ -428,6 +428,25 @@ public sealed class UserAuthentication : IUserAuthentication
     {
         var (conn, tx) = await _db.OpenTenantScopeAsync(tenantId, ct);
 
+
+bool active = false;
+await using (var gate = new NpgsqlCommand("SELECT is_active FROM identity.tenants WHERE id = @t", conn, tx))
+{
+    gate.Parameters.AddWithValue("t", tenantId);
+    var v = await gate.ExecuteScalarAsync(ct);
+    active = v is bool b && b;
+}
+
+// spec 06 — the disabled-tenant gate. Placement is deliberate (phases/P1 spec 06):
+// AFTER password verify (wrong-password and disabled-tenant stay confusable to an
+// observer probing tenant state through password feedback), BEFORE token issue
+// (a disabled tenant's user leaves with NO session: no refresh, no access token).
+// The truth about the disable is visible server-side, never to the caller.
+if (!active)
+{
+    return Result<LoginResult>.Failure(IdentityErrors.TenantDisabled);
+}
+
         try
         {
             string? email = null, locale = null, role = null;

@@ -2,6 +2,7 @@ using Npgsql;
 using Testcontainers.PostgreSql;
 using Xunit;
 using Nabd.Identity;
+using Nabd.Admin;
 
 namespace Nabd.IsolationSuite;
 
@@ -22,6 +23,13 @@ public sealed class PostgresFixture : IAsyncLifetime
 
     /// App lane — the exact door the API uses (env-configured, least-privilege nabd_app).
     public IdentityDb Db { get; private set; } = null!;
+
+    /// <summary>
+    /// Admin lane — THE audited BYPASSRLS login (0011), built the same fail-shut
+    /// way as the app lane. Tests speak through it to prove the audited exception
+    /// really differs from the app lane (spec 06's contrast).
+    /// </summary>
+    public AdminDb Admin { get; private set; } = null!;
 
     public async Task InitializeAsync()
     {
@@ -90,10 +98,10 @@ public sealed class PostgresFixture : IAsyncLifetime
 
         // self-diagnosis: the ledger now applied 0005, so nabd_app MUST exist as a role
         await using (var probe = new NpgsqlCommand(
-            "SELECT string_agg(rolname, ', ') FROM pg_roles WHERE rolname IN ('nabd_app','nabd')", ownerConn))
+            "SELECT string_agg(rolname, ', ') FROM pg_roles WHERE rolname IN ('nabd_app','nabd_admin','nabd')", ownerConn))
         {
             var roles = await probe.ExecuteScalarAsync() as string;
-            if (roles is null || !roles.Contains("nabd_app"))
+            if (roles is null || !roles.Contains("nabd_app") || !roles.Contains("nabd_admin"))
                 throw new InvalidOperationException(
                     $"DB diagnosis: dir={migrations} enumerated=[{string.Join(", ", enumerated.Select(Path.GetFileName))}] "
                     + $"applied=[{string.Join(", ", applied)}] roles=[{roles}]");
@@ -107,16 +115,28 @@ public sealed class PostgresFixture : IAsyncLifetime
             await pw.ExecuteNonQueryAsync();
         }
 
+        // 5b) the admin role's password — SAME secret-free law (0011): the ledger
+        //     carries the role, the container-local throwaway lives here only.
+        await using (var pw = new NpgsqlCommand(
+            "ALTER ROLE nabd_admin PASSWORD 'suite-local-admin-password';", ownerConn))
+        {
+            await pw.ExecuteNonQueryAsync();
+        }
+
         // 6) the env vars IdentityDb reads — set BEFORE building it (it fails fast otherwise)
         Environment.SetEnvironmentVariable("NABD_DB_HOST", _container.Hostname);
         Environment.SetEnvironmentVariable("NABD_DB_PORT", _container.GetMappedPublicPort(5432).ToString());
         Environment.SetEnvironmentVariable("NABD_DB_NAME", "nabd");
         Environment.SetEnvironmentVariable("NABD_APP_DB_USER", "nabd_app");
         Environment.SetEnvironmentVariable("NABD_APP_DB_PASSWORD", "suite-local-password");
+        // the admin lane's env — AdminDb fails fast without them (0011)
+        Environment.SetEnvironmentVariable("NABD_ADMIN_DB_USER", "nabd_admin");
+        Environment.SetEnvironmentVariable("NABD_ADMIN_DB_PASSWORD", "suite-local-admin-password");
         Environment.SetEnvironmentVariable("NABD_TOKEN_PEPPER", "suite-local-pepper");
         Environment.SetEnvironmentVariable("NABD_JWT_SECRET", "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f");
         // 7) the app lane — same constructor the API uses, now pointed at the container
         Db = new IdentityDb();
+        Admin = new AdminDb();
     }
 
     public async Task DisposeAsync()

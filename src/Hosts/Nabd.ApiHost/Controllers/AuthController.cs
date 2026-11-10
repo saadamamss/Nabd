@@ -46,7 +46,8 @@ public sealed class AuthController(IUserAuthentication auth) : ControllerBase
 
     [Viewer(Operations.PasswordChange)]
     [HttpPatch("{tenantId:guid}/users/{userId:guid}/password")]
-    public async Task<IActionResult> ChangePassword(Guid tenantId, Guid userId, [FromBody] JsonPasswordChange body, CancellationToken ct){
+    public async Task<IActionResult> ChangePassword(Guid tenantId, Guid userId, [FromBody] JsonPasswordChange body, CancellationToken ct)
+    {
         var caller = Caller.FromUser(User);
         if (caller is null) return Unauthorized();
 
@@ -61,16 +62,16 @@ public sealed class AuthController(IUserAuthentication auth) : ControllerBase
     {
         var result = await auth.RequestPasswordResetAsync(new ResetPasswordRequest(body.Email, Request.HttpContext.Connection.RemoteIpAddress?.ToString()));
 
-        return result.IsSuccess? NoContent() : Translate(result.Error!);
+        return result.IsSuccess ? NoContent() : Translate(result.Error!);
     }
 
     [AllowAnonymous]
     [HttpPost("reset-confirm")]
     public async Task<IActionResult> ResetConfirm([FromBody] JsonResetConfirm body, CancellationToken ct = default)
     {
-        var result = await auth.ConfirmPasswordResetAsync(new ResetConfirmRequest(body.token, body.NewPassword), ct);    
-    
-        return result.IsSuccess? NoContent() : Translate(result.Error!);
+        var result = await auth.ConfirmPasswordResetAsync(new ResetConfirmRequest(body.token, body.NewPassword), ct);
+
+        return result.IsSuccess ? NoContent() : Translate(result.Error!);
     }
 
 
@@ -86,6 +87,7 @@ public sealed class AuthController(IUserAuthentication auth) : ControllerBase
         }),
         IdentityErrors.ResetTokenDead => StatusCode(410, new { code = error }),
         IdentityErrors.WeakPassword => BadRequest(new { code = error }),
+        IdentityErrors.TenantDisabled => StatusCode(403, new { code = error }),
         _ => BadRequest(new { code = error }),
     };
 }

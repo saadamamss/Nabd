@@ -11,7 +11,12 @@ public static class Operations
     public const string PasswordChange = "auth.password.change";
     public const string UserLocaleSetOthers = "user.locale.set.others";
     public const string DeviceRegister = "device.register";
-    public const string DeviceRead = "device.read";   
+    public const string DeviceRead = "device.read";
+    // Spec 06 (FR-61): the fleet page — the ONLY new ops this spec adds,
+    // and the matrix grants them to platform_admin alone.
+    public const string TenantList = "tenant.list";
+    public const string TenantDisable = "tenant.disable";
+    public const string TenantEnable = "tenant.enable";
 }
 
 
@@ -40,7 +45,8 @@ public static class AuthorizationMatrix
             Operations.UserCreate, Operations.UserDelete,
             Operations.UserRoleSet, Operations.UserLocaleSet,
             Operations.PasswordChange,Operations.UserLocaleSetOthers,
-            Operations.DeviceRegister, Operations.DeviceRead
+            Operations.DeviceRegister, Operations.DeviceRead,
+            Operations.TenantList, Operations.TenantDisable, Operations.TenantEnable
         },
     };
 

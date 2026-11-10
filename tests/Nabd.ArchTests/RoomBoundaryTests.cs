@@ -95,7 +95,7 @@ public sealed class RoomBoundaryTests
     }
 
     [Fact]
-    public void contracts_projects_reference_only_shared_kernel()
+    public void contracts_projects_reference_only_contracts_and_shared_kernel()
     {
         var failures = new List<string>();
 
@@ -109,7 +109,13 @@ public sealed class RoomBoundaryTests
                             !name.StartsWith("System") &&
                             !name.StartsWith("Microsoft") &&
                             !name.StartsWith("netstandard") &&
-                            name != "mscorlib")
+                            name != "mscorlib" &&
+                            // 03 §4 rule 1: a Contracts project may ASK other rooms
+                            // by their CONTRACTS (Admin → Identity.Contracts for
+                            // CallerContext, spec 06). What it must never reach is
+                            // an IMPL room or anything foreign — "Nabd.*" names
+                            // outside this allow-set are the only deadlock here.
+                            !(name.StartsWith("Nabd.") && name.EndsWith(".Contracts")))
                 .Select(r => r.Name)
                 .ToList();
 
