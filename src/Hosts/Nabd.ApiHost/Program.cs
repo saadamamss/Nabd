@@ -74,3 +74,9 @@ app.MapGet("/health/ready", () => Results.Json(new
 })).AllowAnonymous();
 
 app.Run();
+
+// Test-visible Program (spec 07): the HTTP deny-matrix suite bootstraps the
+// REAL host in-process (WebApplicationFactory). A top-level Program compiles
+// to an internal class the test assembly cannot name — the partial makes it
+// public for tests only, and adds zero runtime surface (NFR-06).
+public partial class Program { }

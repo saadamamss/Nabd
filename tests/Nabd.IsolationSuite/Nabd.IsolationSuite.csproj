@@ -10,6 +10,8 @@
   <ItemGroup>
     <PackageReference Include="coverlet.collector" Version="6.0.4" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <!-- spec 07: the HTTP deny-matrix boots the REAL host in-process -->
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.0" />
     <PackageReference Include="Npgsql" Version="10.0.3" />
     <PackageReference Include="Testcontainers.PostgreSql" Version="4.16.0" />
     <PackageReference Include="xunit" Version="2.9.3" />
@@ -18,6 +20,14 @@
 
   <ItemGroup>
     <Using Include="Xunit" />
+  </ItemGroup>
+
+  <!-- spec 07: collections run SERIALLY — every test class owns a fresh
+       Postgres container whose coordinates land in process-wide env vars;
+       a parallel second class would re-point the env mid-run (latent race
+       the service-level suite never tripped, the HTTP one would). -->
+  <ItemGroup>
+    <None Include="xunit.runner.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>
