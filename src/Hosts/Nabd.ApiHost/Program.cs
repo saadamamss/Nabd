@@ -5,6 +5,8 @@ using Nabd.Identity;
 using Nabd.Identity.Contracts;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Nabd.ApiHost.Auth;
+using Nabd.Admin.Contracts;
+using Nabd.Admin;
 
 _ = Nabd.Identity.EnumerationArmor.BurnHash;
 
@@ -39,6 +41,8 @@ builder.Services.AddSingleton<IUserManagement, UserManagement>();
 builder.Services.AddSingleton<LoginThrottle>();
 builder.Services.AddSingleton<IUserAuthentication, UserAuthentication>();
 builder.Services.AddSingleton<IEmailSender, DevLogEmailSender>();
+builder.Services.AddSingleton<AdminDb>();
+builder.Services.AddSingleton<IPlatformTenantAdmin, PlatformTenantAdmin>();
 // Health endpoints (ADR-010; 08 §6): liveness = process up.
 // Readiness expands in P1+ to probe DB, queue and broker session (08 §6 readiness list).
 builder.Services.AddHealthChecks();
