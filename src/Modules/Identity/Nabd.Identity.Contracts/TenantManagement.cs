@@ -66,4 +66,5 @@ public static class IdentityErrors
     public const string LoginBackoff = "identity:login_backoff";
     public const string ResetTokenDead = "identity:reset_token_dead";
     public const string WeakPassword = "identity:weak_password";
+    public const string TenantDisabled = "identity:tenant_disabled";
 }
