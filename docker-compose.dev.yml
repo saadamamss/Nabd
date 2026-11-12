@@ -55,11 +55,29 @@ services:
     restart: unless-stopped
     profiles: [mqtt]         # starts only with --profile mqtt (P3+)
     mem_limit: 1g
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
       # Erlang scheduler busy-wait OFF — the default spins one CPU core at ~100%
       # while fully idle (the ever-running-laptop-fan offender). None of these
       # change behaviour for dev workloads; latency impact is negligible here.
       ERL_FLAGS: "+sbwt none +sbwtdcpu none +sbwtdio none"
+      # ── the broker learns its master (P2 spec 05) ──
+      EMQX_ALLOW_ANONYMOUS: "false"
+      EMQX_AUTHORIZATION__NO_MATCH: deny
+      # authentication: HTTP door #1 (auth)
+      EMQX_AUTHENTICATION__1__MECHANISM: password_based
+      EMQX_AUTHENTICATION__1__BACKEND: http
+      EMQX_AUTHENTICATION__1__METHOD: post
+      EMQX_AUTHENTICATION__1__URL: http://host.docker.internal:5109/internal/emqx/auth?k=${NABD_INTERNAL_SHARED_SECRET}
+      # NOTE (spec 05, 2026-11-12): NO body template lines — EMQX 5.8's env-var
+      # override can't address body-map keys (warns `unknown_env_vars` and ignores
+      # them). The DEFAULT POST body already carries username/password (authn) and
+      # username/topic/action (authz) — exactly what the doors parse.
+      # authorization: HTTP door #2 (acl)
+      EMQX_AUTHORIZATION__SOURCES__1__TYPE: http
+      EMQX_AUTHORIZATION__SOURCES__1__METHOD: post
+      EMQX_AUTHORIZATION__SOURCES__1__URL: http://host.docker.internal:5109/internal/emqx/acl?k=${NABD_INTERNAL_SHARED_SECRET}
     ports:
       - "127.0.0.1:1883:1883"      # MQTT (dev plaintext)
       - "127.0.0.1:18083:18083"    # Dashboard (user EMQX/dashboard… change password!)

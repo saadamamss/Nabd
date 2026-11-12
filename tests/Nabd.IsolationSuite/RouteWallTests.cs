@@ -56,7 +56,8 @@ public sealed class RouteWallTests
                 {
                     null => "no wall attribute (deny-by-default violation)",
                     var w when w.Policy is not (Policies.Viewer
-                        or Policies.TenantAdmin or Policies.PlatformAdmin)
+                        or Policies.TenantAdmin or Policies.PlatformAdmin
+                        or Policies.Internal)     // P2 spec 05: the broker doors' third authority
                         => $"unknown policy '{w.Policy}'",
                     _ => null,
                 }))
@@ -121,7 +122,7 @@ public sealed class RouteWallTests
         PolicyBook.Register(options);
 
         Assert.Equal(
-            ["platform_admin", Policies.TenantAdmin, Policies.Viewer],
+            ["internal", "platform_admin", Policies.TenantAdmin, Policies.Viewer],
             PolicyBook.Admits.Keys.OrderBy(k => k).ToArray());
 
         Assert.NotNull(options.FallbackPolicy);
