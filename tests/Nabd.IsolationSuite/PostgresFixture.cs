@@ -3,6 +3,7 @@ using Testcontainers.PostgreSql;
 using Xunit;
 using Nabd.Identity;
 using Nabd.Admin;
+using Nabd.Assets;
 
 namespace Nabd.IsolationSuite;
 
@@ -30,6 +31,9 @@ public sealed class PostgresFixture : IAsyncLifetime
     /// really differs from the app lane (spec 06's contrast).
     /// </summary>
     public AdminDb Admin { get; private set; } = null!;
+
+    /// <summary>Assets lane — the room's own DB door (P2 spec 02), same app identity.</summary>
+    public AssetsDb Assets { get; private set; } = null!;
 
     public async Task InitializeAsync()
     {
@@ -137,6 +141,8 @@ public sealed class PostgresFixture : IAsyncLifetime
         // 7) the app lane — same constructor the API uses, now pointed at the container
         Db = new IdentityDb();
         Admin = new AdminDb();
+        // the Assets room's DB door — same env vars, same fail-shut shape (P2 spec 02)
+        Assets = new AssetsDb();
     }
 
     public async Task DisposeAsync()

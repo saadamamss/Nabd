@@ -3,6 +3,12 @@
   <ItemGroup>
     <ProjectReference Include="..\..\..\SharedKernel\Nabd.SharedKernel\Nabd.SharedKernel.csproj" />
     <ProjectReference Include="..\Nabd.Assets.Contracts\Nabd.Assets.Contracts.csproj" />
+    <ProjectReference Include="..\..\Identity\Nabd.Identity.Contracts\Nabd.Identity.Contracts.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Npgsql" Version="10.0.3" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.14" />
   </ItemGroup>
 
   <PropertyGroup>

@@ -17,6 +17,13 @@ public static class Operations
     public const string TenantList = "tenant.list";
     public const string TenantDisable = "tenant.disable";
     public const string TenantEnable = "tenant.enable";
+    // P2 spec 02 (FR-10): assets — viewer reads; tenant_admin manages. asset.read
+    // goes into ALL THREE rows: the [Viewer] door admits every role, and
+    // RouteWallTests fact 3 refuses an op the matrix doesn't cover for each admitted role.
+    public const string AssetRead = "asset.read";
+    public const string AssetCreate = "asset.create";
+    public const string AssetUpdate = "asset.update";
+    public const string AssetArchive = "asset.archive";
 }
 
 
@@ -28,7 +35,7 @@ public static class AuthorizationMatrix
         {
             Operations.TenantRead, Operations.UserRead,
             Operations.UserLocaleSet,Operations.PasswordChange,
-            Operations.DeviceRead
+            Operations.DeviceRead, Operations.AssetRead
         },
 
         ["tenant_admin"] = new HashSet<string>
@@ -37,7 +44,10 @@ public static class AuthorizationMatrix
             Operations.UserCreate, Operations.UserDelete,
             Operations.UserRoleSet, Operations.UserLocaleSet,
             Operations.PasswordChange, Operations.UserLocaleSetOthers,
-            Operations.DeviceRegister, Operations.DeviceRead
+            Operations.DeviceRegister, Operations.DeviceRead,
+            Operations.AssetRead, Operations.AssetCreate,
+            Operations.AssetUpdate, Operations.AssetArchive
+
         },
         ["platform_admin"] = new HashSet<string>
         {
@@ -46,7 +56,10 @@ public static class AuthorizationMatrix
             Operations.UserRoleSet, Operations.UserLocaleSet,
             Operations.PasswordChange,Operations.UserLocaleSetOthers,
             Operations.DeviceRegister, Operations.DeviceRead,
-            Operations.TenantList, Operations.TenantDisable, Operations.TenantEnable
+            Operations.TenantList, Operations.TenantDisable, Operations.TenantEnable,
+            Operations.AssetRead, Operations.AssetCreate,
+            Operations.AssetUpdate, Operations.AssetArchive
+
         },
     };
 
@@ -71,7 +84,7 @@ public static class PermissionMatrix
         return null;
     }
 
-    public static string? AssertSelf (CallerContext acting, string operation, Guid tenantId, Guid targetUserId)
+    public static string? AssertSelf(CallerContext acting, string operation, Guid tenantId, Guid targetUserId)
     {
         var error = Assert(acting, operation, tenantId);
         if (error is not null) return error;
