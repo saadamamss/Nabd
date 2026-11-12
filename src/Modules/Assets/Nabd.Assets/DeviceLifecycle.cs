@@ -209,6 +209,45 @@ public sealed class DeviceLifecycle(AssetsDb db, DeviceTokenHasher hasher) : IDe
         }
     }
 
+    // ---- the broker path (P2 spec 05) ---------------------------------------
+
+    public async Task<bool> BrokerAuthenticateAsync(
+        Guid deviceId, string presentedToken, CancellationToken ct = default)
+    {
+        var verified = await VerifyTokenAsync(presentedToken, ct);
+        return verified == deviceId;   // valid AND THIS device — not "valid for anyone"
+    }
+
+    public async Task<bool> AuthorizePublishAsync(
+            Guid deviceId, string topic, string action, CancellationToken ct = default)
+    {
+        if (action != "publish") return false;      // subscribe denied at MVP (commands are V1+)
+
+        // the topic must be EXACTLY t/{tid}/dev/{deviceId}/v1 — wildcards and
+        // anything else die in the split (a topic is never a pattern here)
+        var seg = topic.Split('/');
+        if (seg.Length != 5 || seg[0] != "t" || seg[2] != "dev" || seg[4] != "v1")
+            return false;
+        if (seg[3] != deviceId.ToString()) return false;   // own id only — no DB needed yet
+
+        // tid must match the CREDENTIAL's tenant: 0016 answers null for
+        // revoked/inactive devices → deny (revocation enforced at every publish)
+        var conn = await db.OpenPreAuthConnectionAsync(ct);
+        try
+        {
+            await using var cmd = new NpgsqlCommand(
+                "SELECT assets.device_tenant_by_id(@d)", conn);
+            cmd.Parameters.AddWithValue("d", deviceId);
+            var raw = await cmd.ExecuteScalarAsync(ct);
+            if (raw is not Guid tenantId) return false;
+            return seg[1] == tenantId.ToString();
+        }
+        finally
+        {
+            await conn.DisposeAsync();
+        }
+    }
+
     // ---- helpers ----
 
     /// <summary>The audit line — INSERT only (the log is append-only by GRANT, 0012).</summary>

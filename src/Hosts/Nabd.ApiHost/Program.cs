@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Nabd.ApiHost.Auth;
 using Nabd.Admin.Contracts;
 using Nabd.Admin;
+using Microsoft.AspNetCore.Authorization;
 
 _ = Nabd.Identity.EnumerationArmor.BurnHash;
 
@@ -47,6 +48,10 @@ builder.Services.AddSingleton<IAssetCatalog, AssetCatalog>();
 builder.Services.AddSingleton<DeviceTokenHasher>();
 builder.Services.AddSingleton<IDeviceLifecycle, DeviceLifecycle>();
 builder.Services.AddSingleton<ITemplateCatalog,TemplateCatalog>();
+builder.Services.AddSingleton<InternalSecrets>();
+builder.Services.AddSingleton<IAuthorizationHandler, InternalSecretHandler>();
+builder.Services.AddSingleton<IAuthorizationMiddlewareResultHandler, InternalDenyResultHandler>();
+builder.Services.AddHttpContextAccessor();
 // Health endpoints (ADR-010; 08 §6): liveness = process up.
 // Readiness expands in P1+ to probe DB, queue and broker session (08 §6 readiness list).
 builder.Services.AddHealthChecks();

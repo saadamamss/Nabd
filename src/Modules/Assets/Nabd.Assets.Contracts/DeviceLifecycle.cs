@@ -33,6 +33,20 @@ public interface IDeviceLifecycle
     /// <summary>Token → device id, or null. Uniform shape (unknown vs revoked vs wrong).
     /// The broker-auth door (spec 05) is this method's caller.</summary>
     Task<Guid?> VerifyTokenAsync(string presentedToken, CancellationToken ct = default);
+
+    // ---- the broker path (P2 spec 05) — pre-auth by design: no CallerContext
+    // exists; the authority is the shared secret at the internal door, and the
+    // token hash / device id in the query itself. No matrix assert here — same
+    // class as VerifyTokenAsync. Both answers are bools: uniform deny, the door
+    // never distinguishes unknown/bad/revoked (anti-enumeration).
+
+    /// <summary>CONNECT gate: the token must be VALID and belong to THIS device.
+    /// Rides 0014 (already filters revoked/inactive/unknown → null).</summary>
+    Task<bool> BrokerAuthenticateAsync(Guid deviceId, string presentedToken, CancellationToken ct = default);
+
+    /// <summary>PUBLISH gate: allow ONLY for the device's own topic
+    /// t/{tid}/dev/{deviceId}/v1, action=publish, credential alive. Rides 0016.</summary>
+    Task<bool> AuthorizePublishAsync(Guid deviceId, string topic, string action, CancellationToken ct = default);
 }
 
 /// <summary>Stable error codes for the devices doors.</summary>
