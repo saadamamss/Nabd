@@ -32,6 +32,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Modules\Identity\Nabd.Identity\Nabd.Identity.csproj" />
+    <ProjectReference Include="..\..\src\Tools\Nabd.Simulator\Nabd.Simulator.csproj" />
     <!-- spec 04: the suite inspects the HOST's walls (route coverage + JwtWall) -->
     <ProjectReference Include="..\..\src\Hosts\Nabd.ApiHost\Nabd.ApiHost.csproj" />
     <!-- spec 06: the suite drives the Admin room's service lane directly -->
