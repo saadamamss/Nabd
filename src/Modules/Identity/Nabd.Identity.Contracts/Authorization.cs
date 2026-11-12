@@ -24,6 +24,9 @@ public static class Operations
     public const string AssetCreate = "asset.create";
     public const string AssetUpdate = "asset.update";
     public const string AssetArchive = "asset.archive";
+        // P2 spec 03: the credential lifecycle beyond registration (FR-12).
+    public const string DeviceTokenReissue = "device.token.reissue";
+    public const string DeviceRevoke = "device.revoke";
 }
 
 
@@ -45,6 +48,7 @@ public static class AuthorizationMatrix
             Operations.UserRoleSet, Operations.UserLocaleSet,
             Operations.PasswordChange, Operations.UserLocaleSetOthers,
             Operations.DeviceRegister, Operations.DeviceRead,
+            Operations.DeviceTokenReissue, Operations.DeviceRevoke,
             Operations.AssetRead, Operations.AssetCreate,
             Operations.AssetUpdate, Operations.AssetArchive
 
@@ -56,6 +60,7 @@ public static class AuthorizationMatrix
             Operations.UserRoleSet, Operations.UserLocaleSet,
             Operations.PasswordChange,Operations.UserLocaleSetOthers,
             Operations.DeviceRegister, Operations.DeviceRead,
+            Operations.DeviceTokenReissue, Operations.DeviceRevoke,
             Operations.TenantList, Operations.TenantDisable, Operations.TenantEnable,
             Operations.AssetRead, Operations.AssetCreate,
             Operations.AssetUpdate, Operations.AssetArchive

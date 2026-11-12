@@ -137,6 +137,9 @@ public sealed class PostgresFixture : IAsyncLifetime
         Environment.SetEnvironmentVariable("NABD_ADMIN_DB_USER", "nabd_admin");
         Environment.SetEnvironmentVariable("NABD_ADMIN_DB_PASSWORD", "suite-local-admin-password");
         Environment.SetEnvironmentVariable("NABD_TOKEN_PEPPER", "suite-local-pepper");
+        // the device tokens' own pepper (P2 spec 03, NFR-07) — DeviceTokenHasher fails
+        // shut at construction without it, same 12-factor law as the identity pepper
+        Environment.SetEnvironmentVariable("NABD_DEVICE_TOKEN_PEPPER", "suite-local-device-pepper");
         Environment.SetEnvironmentVariable("NABD_JWT_SECRET", "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f");
         // 7) the app lane — same constructor the API uses, now pointed at the container
         Db = new IdentityDb();

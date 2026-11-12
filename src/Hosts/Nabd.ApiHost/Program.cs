@@ -34,7 +34,6 @@ builder.Services.AddAuthorization(PolicyBook.Register);
 
 // ===== Room wiring (composition root — the ONLY place impl assemblies are touched) =====
 // P0: Assets' in-memory stub. P1/P2 swap implementations behind the same contracts.
-builder.Services.AddSingleton<IDeviceRegistry, InMemoryDeviceRegistry>();
 builder.Services.AddSingleton<IdentityDb>();
 builder.Services.AddSingleton<ITenantRegistration, TenantRegistration>();
 builder.Services.AddSingleton<IUserManagement, UserManagement>();
@@ -45,6 +44,8 @@ builder.Services.AddSingleton<AdminDb>();
 builder.Services.AddSingleton<IPlatformTenantAdmin, PlatformTenantAdmin>();
 builder.Services.AddSingleton<AssetsDb>();
 builder.Services.AddSingleton<IAssetCatalog, AssetCatalog>();
+builder.Services.AddSingleton<DeviceTokenHasher>();
+builder.Services.AddSingleton<IDeviceLifecycle, DeviceLifecycle>();
 // Health endpoints (ADR-010; 08 §6): liveness = process up.
 // Readiness expands in P1+ to probe DB, queue and broker session (08 §6 readiness list).
 builder.Services.AddHealthChecks();
