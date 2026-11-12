@@ -18,7 +18,7 @@ public sealed class AssetsDb
     {
         var host = Environment.GetEnvironmentVariable("NABD_DB_HOST") ?? "localhost";
         var port = Environment.GetEnvironmentVariable("NABD_DB_PORT") ?? "5432";
-        var db   = Environment.GetEnvironmentVariable("NABD_DB_NAME") ?? "nabd";
+        var db = Environment.GetEnvironmentVariable("NABD_DB_NAME") ?? "nabd";
 
         var user = Environment.GetEnvironmentVariable("NABD_APP_DB_USER")
                    ?? throw new InvalidOperationException("NABD_APP_DB_USER must be set (least-privilege app identity, 0012).");
@@ -44,5 +44,14 @@ public sealed class AssetsDb
         cmd.Parameters.AddWithValue("tid", tenantId);
         await cmd.ExecuteNonQueryAsync(ct);
         return (conn, tx);
+    }
+
+    /// <summary>
+    // the lookup rides the 0014 SECURITY DEFINER function — the narrow audited exception.
+    /// </summary>
+    public async Task<NpgsqlConnection> OpenPreAuthConnectionAsync(CancellationToken ct = default)
+    {
+        var conn = await _dataSource.OpenConnectionAsync(ct);
+        return conn;
     }
 }
