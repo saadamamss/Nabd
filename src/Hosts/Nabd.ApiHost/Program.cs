@@ -43,6 +43,8 @@ builder.Services.AddSingleton<IUserAuthentication, UserAuthentication>();
 builder.Services.AddSingleton<IEmailSender, DevLogEmailSender>();
 builder.Services.AddSingleton<AdminDb>();
 builder.Services.AddSingleton<IPlatformTenantAdmin, PlatformTenantAdmin>();
+builder.Services.AddSingleton<AssetsDb>();
+builder.Services.AddSingleton<IAssetCatalog, AssetCatalog>();
 // Health endpoints (ADR-010; 08 §6): liveness = process up.
 // Readiness expands in P1+ to probe DB, queue and broker session (08 §6 readiness list).
 builder.Services.AddHealthChecks();
