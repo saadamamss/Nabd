@@ -37,6 +37,7 @@
     <ProjectReference Include="..\..\src\Hosts\Nabd.ApiHost\Nabd.ApiHost.csproj" />
     <!-- spec 06: the suite drives the Admin room's service lane directly -->
     <ProjectReference Include="..\..\src\Modules\Admin\Nabd.Admin\Nabd.Admin.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Ingestion\Nabd.Ingestion\Nabd.Ingestion.csproj" />
   </ItemGroup>
 
   <!-- FrameworkReference does NOT flow transitively from a ProjectReference —
