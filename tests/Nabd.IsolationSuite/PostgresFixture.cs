@@ -143,6 +143,12 @@ public sealed class PostgresFixture : IAsyncLifetime
         // the internal doors' shared secret (P2 spec 05) — InternalSecrets is
         // fail-shut at construction; the in-process HTTP host needs it too
         Environment.SetEnvironmentVariable("NABD_INTERNAL_SHARED_SECRET", "suite-local-internal-secret");
+        // the MQTT consumer identity (P3 spec 02) — ConsumerAccess is fail-shut at
+        // construction and the doors now REQUIRE it (the controller's dispatch asks
+        // the consumer question first); every suite app needs the identity, so it
+        // lives with the other suite secrets, not per-test-class
+        Environment.SetEnvironmentVariable("NABD_MQTT_CONSUMER_USER", "nabd-consumer");
+        Environment.SetEnvironmentVariable("NABD_MQTT_CONSUMER_SECRET", "suite-local-consumer-secret");
         Environment.SetEnvironmentVariable("NABD_JWT_SECRET", "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f");
         // 7) the app lane — same constructor the API uses, now pointed at the container
         Db = new IdentityDb();
