@@ -21,6 +21,20 @@ namespace Nabd.Ingestion.Contracts;
 public interface IConsumerAccess
 {
     /// <summary>
+    /// The configured consumer username — the name the MQTT client connects with.
+    /// Never parses as a Guid (enforced at construction; see Authenticate).
+    /// </summary>
+    string Username { get; }
+
+    /// <summary>
+    /// The configured consumer secret as UTF-8 bytes — consumed by the room's own
+    /// MQTT client to authenticate, and compared constant-time in Authenticate.
+    /// Lives here (not only on the impl) because the consumer class and the door
+    /// answers are two uses of ONE identity: same source, same room.
+    /// </summary>
+    byte[] Secret { get; }
+
+    /// <summary>
     /// True only for the ONE configured consumer username. The configured name
     /// must never parse as a Guid — device usernames ARE Guids, and a Guid-shaped
     /// consumer name would shadow a real device at the auth door's dispatch.
