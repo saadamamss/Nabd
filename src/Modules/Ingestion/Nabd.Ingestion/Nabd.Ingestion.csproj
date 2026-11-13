@@ -4,6 +4,7 @@
     <ProjectReference Include="..\..\..\SharedKernel\Nabd.SharedKernel\Nabd.SharedKernel.csproj" />
     <ProjectReference Include="..\Nabd.Ingestion.Contracts\Nabd.Ingestion.Contracts.csproj" />
     <ProjectReference Include="..\..\Assets\Nabd.Assets.Contracts\Nabd.Assets.Contracts.csproj" />
+    <ProjectReference Include="..\..\TelemetryStore\Nabd.TelemetryStore.Contracts\Nabd.TelemetryStore.Contracts.csproj" />
   </ItemGroup>
 
   <ItemGroup>

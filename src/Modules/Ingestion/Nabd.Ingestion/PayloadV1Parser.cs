@@ -12,7 +12,7 @@ using Nabd.Ingestion.Contracts;
 /// </summary>
 public static class PayloadV1Parser
 {
-    public static bool TryParse(ReadOnlySpan<byte> bytes, out ReadingBatch? batch, out string? error)
+    public static bool TryParse(ReadOnlyMemory<byte> bytes, out ReadingBatch? batch, out string? error)
     {
         batch = null;
         error = "RED stub — not implemented";
