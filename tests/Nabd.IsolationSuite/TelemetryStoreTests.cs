@@ -12,9 +12,27 @@ using Xunit.Abstractions;
 // every WRITE goes through the real store on the APP lane — nabd_app with the
 // 0018 grants, so a missing grant fails these facts, not silently passes.
 
-public sealed class TelemetryStoreTests(PostgresFixture pg, ITestOutputHelper out_) : IClassFixture<PostgresFixture>
+public sealed class TelemetryStoreTests(PostgresFixture pg, ITestOutputHelper out_) : IClassFixture<PostgresFixture>, IAsyncLifetime
 {
     private static readonly DateTimeOffset Base = new(2026, 11, 14, 12, 0, 0, TimeSpan.Zero);
+
+    // ONE shared DB door for the whole class: a fresh TelemetryStoreDb per fact
+    // would leak one NpgsqlDataSource pool per fact until Postgres exhausts its
+    // connection slots (53300 — proven live). Production holds ONE singleton;
+    // the tests must mirror that shape, not the leak.
+    private TelemetryStoreDb _db = null!;
+
+    public Task InitializeAsync()
+    {
+        _db = new TelemetryStoreDb();
+        return Task.CompletedTask;
+    }
+
+    public Task DisposeAsync()
+    {
+        _db.Dispose();
+        return Task.CompletedTask;
+    }
 
     // ---- seed helper (owner lane): tenant → template → asset → device ---------
     private async Task<Guid> SeedDeviceAsync()
@@ -46,7 +64,7 @@ public sealed class TelemetryStoreTests(PostgresFixture pg, ITestOutputHelper ou
 
     private static readonly DateTimeOffset ReceivedAt = Base.AddSeconds(1);
 
-    private PostgresReadingsStore Store(int batchSize = 500) => new(new TelemetryStoreDb(), batchSize);
+    private PostgresReadingsStore Store(int batchSize = 500) => new(_db, batchSize);
 
     // ---- fact 1: IDEMPOTENCY CORE — same batch stored 10× = one row set --------
 
@@ -162,7 +180,7 @@ public sealed class TelemetryStoreTests(PostgresFixture pg, ITestOutputHelper ou
     public async Task one_hundred_marks_inside_one_window_flush_as_one_bulk_upsert()
     {
         var device = await SeedDeviceAsync();
-        var tracker = new DeviceStatusTracker(new TelemetryStoreDb());
+        var tracker = new DeviceStatusTracker(_db);
 
         for (var i = 0; i < 100; i++)
         {
@@ -175,8 +193,8 @@ public sealed class TelemetryStoreTests(PostgresFixture pg, ITestOutputHelper ou
         await using var cmd = new NpgsqlCommand(
             "SELECT last_seen_at FROM telemetry.device_status WHERE device_id = @d", conn);
         cmd.Parameters.AddWithValue("d", device);
-        var seen = (DateTimeOffset)(await cmd.ExecuteScalarAsync())!;
-        Assert.Equal(Base.AddSeconds(99), seen);    // the LATEST mark won the buffer
+        var seen = (DateTime)(await cmd.ExecuteScalarAsync())!;   // Npgsql surfaces timestamptz as DateTime
+        Assert.Equal(Base.AddSeconds(99), seen.ToUniversalTime());    // the LATEST mark won the buffer
     }
 
     // ---- fact 7: GREATEST guard — an out-of-order mark never regresses ----------
@@ -185,7 +203,7 @@ public sealed class TelemetryStoreTests(PostgresFixture pg, ITestOutputHelper ou
     public async Task an_out_of_order_mark_never_regresses_last_seen_at()
     {
         var device = await SeedDeviceAsync();
-        var tracker = new DeviceStatusTracker(new TelemetryStoreDb());
+        var tracker = new DeviceStatusTracker(_db);
 
         await tracker.MarkSeenAsync(device, Guid.NewGuid(), Base, Base);
         await tracker.FlushNowAsync();                      // window 1: seen = Base
@@ -196,8 +214,8 @@ public sealed class TelemetryStoreTests(PostgresFixture pg, ITestOutputHelper ou
         await using var cmd = new NpgsqlCommand(
             "SELECT last_seen_at FROM telemetry.device_status WHERE device_id = @d", conn);
         cmd.Parameters.AddWithValue("d", device);
-        var seen = (DateTimeOffset)(await cmd.ExecuteScalarAsync())!;
-        Assert.Equal(Base, seen);   // GREATEST() held the line
+        var seen = (DateTime)(await cmd.ExecuteScalarAsync())!;   // Npgsql surfaces timestamptz as DateTime
+        Assert.Equal(Base, seen.ToUniversalTime());   // GREATEST() held the line
         Assert.Equal(2, tracker.FlushCount);
     }
 

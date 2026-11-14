@@ -10,7 +10,7 @@ using Npgsql;
 /// and the pipeline in front of the store; every row arrives pre-validated with
 /// its tenant stamped. The 0018 grants are this role's whole footprint on telemetry.
 /// </summary>
-public sealed class TelemetryStoreDb
+public sealed class TelemetryStoreDb : IDisposable
 {
     private readonly NpgsqlDataSource _dataSource;
 
@@ -34,4 +34,6 @@ public sealed class TelemetryStoreDb
         var conn = await _dataSource.OpenConnectionAsync(ct);
         return conn;
     }
+
+    public void Dispose() => _dataSource.Dispose();
 }
