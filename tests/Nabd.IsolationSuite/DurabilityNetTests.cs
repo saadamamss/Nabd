@@ -23,8 +23,6 @@ using Xunit;
 
 public sealed class DurabilityNetTests(PostgresFixture pg) : IClassFixture<PostgresFixture>
 {
-    private static readonly Guid Device = Guid.NewGuid();
-    private static readonly Guid Tenant = Guid.NewGuid();
     private static readonly byte[] Raw = Encoding.UTF8.GetBytes("""{"v":1,"ts":"NOT","seq":"junk","rr":}""");
 
     // ---- fact 1: every rejection reason increments ITS counter -----------------
@@ -48,7 +46,7 @@ public sealed class DurabilityNetTests(PostgresFixture pg) : IClassFixture<Postg
     [Fact]
     public async Task a_malformed_but_authenticated_mqtt_batch_lands_in_raw_rejects_with_its_raw_bytes()
     {
-        var device = await SeedDeviceAsync();
+        var (device, _) = await SeedDeviceAsync();
         var rawRejects = new RawRejectsStore(new TelemetryStoreDb());
         var readings = new ThrowingReadingsStore();   // an accepted batch NEVER happens here
         var (sink, tracker) = SinkWithRealRawStore(rawRejects, readings);
@@ -56,7 +54,7 @@ public sealed class DurabilityNetTests(PostgresFixture pg) : IClassFixture<Postg
         // The device is AUTHENTICATED (its identity resolved — the pipeline's
         // edges answered), then the parse fails: the DLQ_INVALID-class shape.
         var received = DateTimeOffset.UtcNow;
-        await sink.AcceptAsync(new IngestEnvelope(device, $"t/{Tenant}/dev/{device}/v1", Raw, received));
+        await sink.AcceptAsync(new IngestEnvelope(device, $"t/x/dev/{device}/v1", Raw, received));
 
         await using var conn = await pg.Owner.OpenConnectionAsync();
         await using var cmd = new NpgsqlCommand("""
@@ -74,7 +72,7 @@ public sealed class DurabilityNetTests(PostgresFixture pg) : IClassFixture<Postg
 
         Assert.Empty(tracker.Marks);                             // presence untouched, same law
         await Assert.ThrowsAnyAsync<InvalidOperationException>(   // an accepted batch would fail loud
-            () => sink.AcceptAsync(Envelope(Payload("2026-11-14T12:00:00Z", 1, (22.5, "temp")))));
+            () => sink.AcceptAsync(Envelope(device, Payload("2026-11-14T12:00:00Z", 1, (22.5, "temp")))));
     }
 
     // ---- fact 3: forensics OUTLIVE the credential ------------------------------
@@ -82,7 +80,7 @@ public sealed class DurabilityNetTests(PostgresFixture pg) : IClassFixture<Postg
     [Fact]
     public async Task raw_rejects_forensics_outlive_the_credential()
     {
-        var device = await SeedDeviceAsync();
+        var (device, tenant) = await SeedDeviceAsync();
         var rawRejects = new RawRejectsStore(new TelemetryStoreDb());
         var (sink, _) = SinkWithRealRawStore(rawRejects, new ThrowingReadingsStore());
 
@@ -92,7 +90,7 @@ public sealed class DurabilityNetTests(PostgresFixture pg) : IClassFixture<Postg
         // the forensics must NOT (no cascade, no cleanup on the reject path).
         var devices = new DeviceLifecycle(pg.Assets, new DeviceTokenHasher());
         var revoke = await devices.RevokeDeviceAsync(
-            new CallerContext(Guid.NewGuid(), Tenant, ["tenant_admin"]), device);
+            new CallerContext(Guid.NewGuid(), tenant, ["tenant_admin"]), device);
         Assert.True(revoke.IsSuccess, $"SETUP failed (revoke): {revoke.Error}");
 
         await using var conn = await pg.Owner.OpenConnectionAsync();
@@ -125,29 +123,32 @@ public sealed class DurabilityNetTests(PostgresFixture pg) : IClassFixture<Postg
                     NullLogger<PipelineIngestionSink>.Instance), tracker);
     }
 
-    private async Task<Guid> SeedDeviceAsync()
+    private async Task<(Guid Device, Guid Tenant)> SeedDeviceAsync()
     {
+        var tenant = Guid.NewGuid();
         var template = Guid.NewGuid();
         var asset = Guid.NewGuid();
+        var device = Guid.NewGuid();
         await using var conn = await pg.Owner.OpenConnectionAsync();
         await using var batch = new NpgsqlCommand("""
             INSERT INTO identity.tenants (id, name) VALUES (@t, 'dur-seed');
             INSERT INTO assets.asset_type_templates (id, key, name_ar, name_en) VALUES (@tpl, @tk, 'قالب', 'Durability Template');
             INSERT INTO assets.assets (id, tenant_id, template_id, name) VALUES (@a, @t, @tpl, 'Durability Asset');
             INSERT INTO assets.devices (id, tenant_id, asset_id, template_id, name, token_hash)
-                VALUES (@d, @t, @a, @tpl, 'Durability Device', 'dur-seed-hash');
+                VALUES (@d, @t, @a, @tpl, 'Durability Device', @hash);
             """, conn);
-        batch.Parameters.AddWithValue("t", Tenant);
+        batch.Parameters.AddWithValue("t", tenant);
         batch.Parameters.AddWithValue("tpl", template);
         batch.Parameters.AddWithValue("tk", $"du-{Guid.NewGuid():N}");
         batch.Parameters.AddWithValue("a", asset);
-        batch.Parameters.AddWithValue("d", Device);
+        batch.Parameters.AddWithValue("d", device);
+        batch.Parameters.AddWithValue("hash", $"dur-{Guid.NewGuid():N}");
         await batch.ExecuteNonQueryAsync();
-        return Device;
+        return (device, tenant);
     }
 
-    private static IngestEnvelope Envelope(string json) =>
-        new(Device, $"t/{Tenant}/dev/{Device}/v1", Encoding.UTF8.GetBytes(json), DateTimeOffset.UtcNow);
+    private static IngestEnvelope Envelope(Guid device, string json) =>
+        new(device, $"t/x/dev/{device}/v1", Encoding.UTF8.GetBytes(json), DateTimeOffset.UtcNow);
 
     private static string Payload(string ts, long seq, params (double Value, string Channel)[] readings)
     {
@@ -182,6 +183,6 @@ public sealed class DurabilityNetTests(PostgresFixture pg) : IClassFixture<Postg
 
     private sealed class FakeIdentity : IIngestionIdentity
     {
-        public Task<Guid?> ResolveTenantIdAsync(Guid deviceId, CancellationToken ct = default) => Task.FromResult<Guid?>(Tenant);
+        public Task<Guid?> ResolveTenantIdAsync(Guid deviceId, CancellationToken ct = default) => Task.FromResult<Guid?>(Guid.NewGuid());
     }
 }
