@@ -2,15 +2,16 @@ namespace Nabd.ProcessingHost;
 
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Nabd.Assets;
 using Nabd.Ingestion;
 using Nabd.Ingestion.Contracts;
+using Nabd.TelemetryStore.Contracts;
 
 /// <summary>
 /// Processing Host worker (03 §5): the composition root's long-running loop.
-/// P3 spec 02: wires the MQTT consumer — door identity (ConsumerAccess, fail-shut
-/// at construction) → sink (LoggingIngestionSink until spec 03/04's pipeline) →
-/// RunAsync, which lives until the host stops. Later phases wire more rooms here
-/// (batch writer, rules engine, watchdog) — one slice at a time, per 12 §4.
+/// P3 spec 03: consumer → sink (pipeline + store port) — the validation
+/// pipeline is LIVE on the MQTT path. The store port is the LoggingReadingsStore
+/// placeholder until spec 04's batch writer lands at THIS wiring line only.
 /// </summary>
 public sealed class ProcessingWorker(
     ILogger<ProcessingWorker> logger,
@@ -18,13 +19,20 @@ public sealed class ProcessingWorker(
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        logger.LogInformation("ProcessingHost up — P3 spec 02: wiring the MQTT consumer.");
+        logger.LogInformation("ProcessingHost up — P3 spec 03: wiring the validation pipeline.");
 
-        // Fail-shut at boot: a missing env var throws HERE, at process start —
-        // the consumer never half-boots without its identity (NFR-08).
+        // Fail-shut chain: ConsumerAccess throws at boot without its env (NFR-08).
         var access = new ConsumerAccess();
-        IIngestionSink sink = new LoggingIngestionSink(
-            loggerFactory.CreateLogger<LoggingIngestionSink>());
+
+        // The Assets room's edges, wired by the host (the wall's legal crossing).
+        var edges = new IngestionEdges(new AssetsDb());
+
+        var pipeline = new ValidationPipeline(edges, edges);
+        IReadingsStore store = new LoggingReadingsStore(
+            loggerFactory.CreateLogger<LoggingReadingsStore>());   // spec 04 replaces HERE only
+        IIngestionSink sink = new PipelineIngestionSink(
+            pipeline, store, loggerFactory.CreateLogger<PipelineIngestionSink>());
+
         var consumer = new EmqxIngestConsumer(
             access, sink, loggerFactory.CreateLogger("Nabd.Ingestion.Consumer"));
 
