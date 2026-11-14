@@ -77,6 +77,7 @@ builder.Services.AddSingleton<IReadingsStore>(sp => new PostgresReadingsStore(
     sp.GetRequiredService<IConfiguration>().GetValue("Ingestion:BatchSize", 500)));
 builder.Services.AddHostedService<Nabd.TelemetryStore.DeviceStatusFlushWorker>();
 builder.Services.AddSingleton<DeviceRateLimiter>();
+builder.Services.AddSingleton<RejectionCounters>();
 builder.Services.AddSingleton<HttpIngestDoor>();
 // Health endpoints (ADR-010; 08 §6): liveness = process up.
 // Readiness expands in P1+ to probe DB, queue and broker session (08 §6 readiness list).
@@ -101,11 +102,16 @@ app.UseAuthorization();
 // (RouteWallTests reflect controllers only; these two stay outside that net by shape.)
 app.MapHealthChecks("/health/live").AllowAnonymous();
 
-app.MapGet("/health/ready", () => Results.Json(new
+// P3 spec 06: readiness JSON now carries the per-reason rejection counters —
+// the honest metrics floor (plan/09 §8 spirit). The counters are THIS
+// process's rejections (HTTP path); the MQTT path's authoritative count rides
+// telemetry.raw_rejects (0019) — DB-backed, no process can lose it.
+app.MapGet("/health/ready", (RejectionCounters counters) => Results.Json(new
 {
     status = "degraded",
     note = "P0 skeleton — readiness checks (db/queue/broker) arrive with the compose services (08 §6)",
     version = "0.1.0-p0",
+    rejected = counters.Snapshot(),
 })).AllowAnonymous();
 
 app.Run();

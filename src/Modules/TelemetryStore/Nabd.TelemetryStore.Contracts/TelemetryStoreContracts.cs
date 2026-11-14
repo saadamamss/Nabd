@@ -33,3 +33,27 @@ public interface IDeviceStatusTracker
     /// <summary>Buffer a device's latest presence. O(1), in-memory; the oldest flush window pays the DB, nobody else.</summary>
     Task MarkSeenAsync(Guid deviceId, Guid tenantId, DateTimeOffset lastSeenUtc, DateTimeOffset lastEventTimeUtc, CancellationToken ct = default);
 }
+
+/// <summary>
+/// One MQTT-path rejection as it lands in telemetry.raw_rejects (migration 0019,
+/// P3 spec 06): the RAW bytes verbatim + the catalog reason — recovery first,
+/// forensics always (plan/05 §7: nothing silently dropped). Identity may be
+/// partial: tenant/device NULLABLE by design (a rejection can precede identity
+/// resolution). NOT a hypertable — forensics, not a time series.
+/// </summary>
+public sealed record RawRejectDto(
+    DateTimeOffset TimeUtc,
+    DateTimeOffset ReceivedAtUtc,
+    Guid? TenantId,
+    Guid? DeviceId,
+    string Reason,
+    byte[] Payload);
+
+/// <summary>
+/// The TelemetryStore room's rejection-forensics port (P3 spec 06): append-only
+/// INSERTs (0019 gives nabd_app no UPDATE/DELETE on raw forensics).
+/// </summary>
+public interface IRawRejectStore
+{
+    Task StoreAsync(RawRejectDto reject, CancellationToken ct = default);
+}

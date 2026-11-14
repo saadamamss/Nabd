@@ -39,8 +39,12 @@ public sealed class ProcessingWorker(
         var batchSize = configuration.GetValue("Ingestion:BatchSize", 500);
         IReadingsStore store = new PostgresReadingsStore(telemetryDb, batchSize);
 
+        // The TelemetryStore room's ports — the sink's four + the DI-shared tracker.
+        var rawRejects = new RawRejectsStore(telemetryDb);   // 0019: rejections get a destination (spec 06)
+        var counters = new RejectionCounters();              // per-process; the DB copy rides raw_rejects
         IIngestionSink sink = new PipelineIngestionSink(
-            pipeline, store, tracker, loggerFactory.CreateLogger<PipelineIngestionSink>());
+            pipeline, store, tracker, rawRejects, counters,
+            loggerFactory.CreateLogger<PipelineIngestionSink>());
 
         var consumer = new EmqxIngestConsumer(
             access, sink, loggerFactory.CreateLogger("Nabd.Ingestion.Consumer"));

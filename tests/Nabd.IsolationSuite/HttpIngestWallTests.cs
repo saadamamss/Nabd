@@ -356,6 +356,7 @@ public sealed class HttpIngestWallTests : IClassFixture<PostgresFixture>
             new ValidationPipeline(new FakeChannels(Keys("temperature")), new FakeIdentity()),
             new BlockingStore(gate.Task),
             new SilentTracker(),
+            new RejectionCounters(),
             Microsoft.Extensions.Logging.Abstractions.NullLogger<HttpIngestDoor>.Instance,
             concurrencyBound: 1);   // the spike's shape, tightened for a deterministic fact
 
@@ -369,6 +370,26 @@ public sealed class HttpIngestWallTests : IClassFixture<PostgresFixture>
         gate.SetResult();
         var landed = await first;
         Assert.Equal(200, landed.Status);
+    }
+
+    // ---- fact 13: the health/ready JSON carries the rejection counters ----------
+
+    [Fact]
+    public async Task health_ready_json_carries_the_rejection_counters()
+    {
+        var (_, token, _) = await SeedDeviceAsync();
+        var res = await PostAsync(token, Payload("2026-11-14T12:00:00Z", 1, ("pressure", 1.0)));
+        var (status, _, _) = Read(res, await res.Content.ReadAsStringAsync());
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, (HttpStatusCode)status);
+
+        var health = await _client.GetAsync("/health/ready");
+        var body = await health.Content.ReadAsStringAsync();
+        using var doc = JsonDocument.Parse(body);
+
+        Assert.True(doc.RootElement.TryGetProperty("rejected", out var rejected),
+            "the readiness JSON must carry the rejected map (spec 06's metrics floor)");
+        Assert.True(rejected.TryGetProperty(IngestionErrors.E422_UNKNOWN_CHANNEL, out var n));
+        Assert.True(n.GetInt64() >= 1, "a 422 that just happened must be counted");
     }
 
     // ---- fakes for the door-level fact ------------------------------------------

@@ -53,6 +53,16 @@ public sealed class PipelineSinkTests
         }
     }
 
+    private sealed class SilentRawRejects : IRawRejectStore
+    {
+        public List<RawRejectDto> Rejects { get; } = [];
+        public Task StoreAsync(RawRejectDto reject, CancellationToken ct = default)
+        {
+            Rejects.Add(reject);
+            return Task.CompletedTask;
+        }
+    }
+
     private sealed class FakeChannels : IDeviceChannels
     {
         public Task<IReadOnlySet<string>?> GetChannelKeysAsync(Guid deviceId, CancellationToken ct = default)
@@ -70,7 +80,8 @@ public sealed class PipelineSinkTests
         var tracker = new RecordingTracker();
         return (new PipelineIngestionSink(
                     new ValidationPipeline(new FakeChannels(), new FakeIdentity()),
-                    store, tracker, NullLogger<PipelineIngestionSink>.Instance), tracker);
+                    store, tracker, new SilentRawRejects(), new RejectionCounters(),
+                    NullLogger<PipelineIngestionSink>.Instance), tracker);
     }
 
     private static IngestEnvelope Envelope(string json)

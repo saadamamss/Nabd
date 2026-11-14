@@ -20,6 +20,7 @@ public sealed class HttpIngestDoor(
     ValidationPipeline pipeline,
     IReadingsStore store,
     IDeviceStatusTracker deviceStatus,
+    RejectionCounters counters,
     ILogger<HttpIngestDoor>? logger = null,
     int concurrencyBound = 16)   // the spike's 16-worker shape (ADR-005 verdict)
 {
@@ -31,6 +32,8 @@ public sealed class HttpIngestDoor(
 
     public async Task<HttpIngestVerdict> IngestAsync(string presentedToken, byte[] payload, CancellationToken ct = default)
     {
+        _ = counters;   // spec 06's port — the owner's increments (RED until then)
+
         // ---- stage 1: the device-token lane (NOT the JWT wall) ----------------
         var deviceId = presentedToken is { Length: > 0 }
             ? await devices.VerifyTokenAsync(presentedToken, ct)

@@ -13,6 +13,8 @@ using Nabd.TelemetryStore.Contracts;
 /// 3. a store FAILURE PROPAGATES OUT — never swallowed — so the consumer's
 ///    catch leaves the message un-acked and the broker redelivers (NFR-04's
 ///    ack-after-commit; crash between commit and ack = idempotent re-insert).
+/// 4. (SPEC 06) a rejected delivery is NEVER silent: raw bytes + reason land
+///    in telemetry.raw_rejects (0019) and the reason increments its counter.
 /// Rejections stay LOUD: logged with their catalog code (spec 06 adds the
 /// raw_rejects table beside this log line — never a silent drop).
 /// </summary>
@@ -20,10 +22,14 @@ public sealed class PipelineIngestionSink(
     ValidationPipeline pipeline,
     IReadingsStore store,
     IDeviceStatusTracker deviceStatus,
+    IRawRejectStore rawRejects,
+    RejectionCounters counters,
     ILogger<PipelineIngestionSink> logger) : IIngestionSink
 {
     public async Task AcceptAsync(IngestEnvelope envelope, CancellationToken ct = default)
     {
+        _ = rawRejects; _ = counters;   // spec 06's ports — the owner's edit below (RED until then)
+
         var result = await pipeline.RunAsync(envelope, ct);
 
         if (!result.IsAccepted)
