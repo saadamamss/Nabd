@@ -32,7 +32,6 @@ public sealed class HttpIngestDoor(
 
     public async Task<HttpIngestVerdict> IngestAsync(string presentedToken, byte[] payload, CancellationToken ct = default)
     {
-        _ = counters;   // spec 06's port — the owner's increments (RED until then)
 
         // ---- stage 1: the device-token lane (NOT the JWT wall) ----------------
         var deviceId = presentedToken is { Length: > 0 }
@@ -42,6 +41,7 @@ public sealed class HttpIngestDoor(
         {
             logger?.LogWarning("ingest DENIED code={Code} reason=invalid-device-token",
                 IngestionErrors.E401_AUTH);
+            counters.Increment(IngestionErrors.E401_AUTH);
             return new(401, IngestionErrors.E401_AUTH, "invalid device credential", 0, [], null);
         }
 
@@ -49,18 +49,21 @@ public sealed class HttpIngestDoor(
         if (!quota.Allow(deviceId.Value, out var retryAfter))
         {
             logger?.LogWarning("ingest DENIED code={Code} device={DeviceId}", IngestionErrors.E429_QUOTA, deviceId);
+            counters.Increment(IngestionErrors.E429_QUOTA);
             return new(429, IngestionErrors.E429_QUOTA, "per-device rate exceeded", 0, [], retryAfter);
         }
 
         // ---- stage 3: the body-size law ----------------------------------------
         if (payload.Length > MaxBodyBytes)
         {
+            counters.Increment(IngestionErrors.DLQ_INVALID);
             return new(413, IngestionErrors.DLQ_INVALID, "body exceeds the 1 MB limit (plan/05 §4)", 0, [], null);
         }
 
         // ---- stage 4: bounded concurrency — shed BEFORE the store -------------
         if (!await _slots.WaitAsync(0, ct))
         {
+            counters.Increment(IngestionErrors.E429_QUOTA);
             return new(429, IngestionErrors.E429_QUOTA, "door at capacity — retry shortly", 0, [], 1);
         }
 
@@ -75,6 +78,7 @@ public sealed class HttpIngestDoor(
                 var rejected = result.Rejected!;
                 logger?.LogWarning("ingest REJECTED code={Code} detail={Detail} device={DeviceId}",
                     rejected.Code, rejected.Detail, deviceId);
+                counters.Increment(rejected.Code);
                 return new(StatusOf(rejected.Code), rejected.Code, rejected.Detail, 0, [], null);
             }
 
