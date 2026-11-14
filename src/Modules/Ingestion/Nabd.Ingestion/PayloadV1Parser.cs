@@ -11,13 +11,19 @@ using Nabd.Ingestion.Contracts;
 /// </summary>
 public static class PayloadV1Parser
 {
-    /// <summary>≤ 32 channels per message (plan/05 §6 stage 3's size law).</summary>
+    /// <summary>≤ 32 readings per MQTT message (plan/05 §6 stage 3's size law — the
+    /// MQTT transport's default; the HTTP door passes its own 500 cap, plan/05 §4).</summary>
     public const int MaxReadingsPerMessage = 32;
 
     /// <summary>Seq sanity (owner ruling 2026-11-13): an integer in [0, 2^62) — and NOTHING more.</summary>
     public static readonly long MaxSeq = 1L << 62;
 
+    /// <summary>The MQTT transport's cap. The HTTP door calls the overload below with 500.</summary>
     public static bool TryParse(ReadOnlyMemory<byte> bytes, out ReadingBatch? batch, out string? error)
+        => TryParse(bytes, MaxReadingsPerMessage, out batch, out error);
+
+    /// <summary>Transport-scoped parse: each door passes ITS batch cap (MQTT 32, HTTP 500 — plan/05 §4).</summary>
+    public static bool TryParse(ReadOnlyMemory<byte> bytes, int maxReadings, out ReadingBatch? batch, out string? error)
     {
         batch = null;
         error = null;
@@ -97,9 +103,9 @@ public static class PayloadV1Parser
             }
 
             var count = rr.GetArrayLength();
-            if (count == 0 || count > MaxReadingsPerMessage)
+            if (count == 0 || count > maxReadings)
             {
-                error = $"rr must hold 1..{MaxReadingsPerMessage} readings, got {count}";
+                error = $"rr must hold 1..{maxReadings} readings, got {count}";
                 return false;
             }
 
@@ -139,7 +145,29 @@ public static class PayloadV1Parser
                     return false;
                 }
 
-                readings.Add(new PipelineReading(channel, value));
+                // Per-reading ts override (plan/05 §5 batch form): OPTIONAL — absent
+                // means the batch-level ts governs. Same content law as the batch ts
+                // (ISO-8601 or FormatException → DLQ_INVALID).
+                DateTimeOffset? readingTs = null;
+                if (item.TryGetProperty("ts", out var rts))
+                {
+                    if (rts.ValueKind != JsonValueKind.String)
+                    {
+                        error = $"rr[{index}].ts is not a string";
+                        return false;
+                    }
+                    try
+                    {
+                        readingTs = rts.GetDateTimeOffset().ToUniversalTime();
+                    }
+                    catch (FormatException)
+                    {
+                        error = $"rr[{index}].ts is not an ISO-8601 timestamp";
+                        return false;
+                    }
+                }
+
+                readings.Add(new PipelineReading(channel, value, readingTs));
                 index++;
             }
 

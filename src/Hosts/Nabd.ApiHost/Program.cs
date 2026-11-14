@@ -10,6 +10,8 @@ using Nabd.Admin;
 using Microsoft.AspNetCore.Authorization;
 using Nabd.Ingestion.Contracts;
 using Nabd.Ingestion;
+using Nabd.TelemetryStore;
+using Nabd.TelemetryStore.Contracts;
 
 _ = Nabd.Identity.EnumerationArmor.BurnHash;
 
@@ -55,6 +57,27 @@ builder.Services.AddSingleton<IAuthorizationHandler, InternalSecretHandler>();
 builder.Services.AddSingleton<IAuthorizationMiddlewareResultHandler, InternalDenyResultHandler>();
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddSingleton<IConsumerAccess, ConsumerAccess>();
+
+// ===== P3 spec 05 — the HTTP ingest door's wiring (plan/05 §4, VETO ruling) =====
+// The door rides the SAME pipeline + store as the MQTT path; only the transport
+// differs. The pipeline instance here carries the HTTP batch cap (500 — §4);
+// the MQTT consumer's instance keeps its 32-message law in ProcessingHost.
+builder.Services.AddSingleton(sp =>
+{
+    var edges = new IngestionEdges(sp.GetRequiredService<AssetsDb>());
+    return new ValidationPipeline(edges, edges, maxReadingsPerBatch: 500);
+});
+builder.Services.AddSingleton<TelemetryStoreDb>();
+builder.Services.AddSingleton<DeviceStatusTracker>();
+// the tracker's CONTRACT rides beside its concrete type: the MQTT sink marks
+// via the concrete, the HTTP door via the port — ONE shared buffer either way.
+builder.Services.AddSingleton<IDeviceStatusTracker>(sp => sp.GetRequiredService<DeviceStatusTracker>());
+builder.Services.AddSingleton<IReadingsStore>(sp => new PostgresReadingsStore(
+    sp.GetRequiredService<TelemetryStoreDb>(),
+    sp.GetRequiredService<IConfiguration>().GetValue("Ingestion:BatchSize", 500)));
+builder.Services.AddHostedService<Nabd.TelemetryStore.DeviceStatusFlushWorker>();
+builder.Services.AddSingleton<DeviceRateLimiter>();
+builder.Services.AddSingleton<HttpIngestDoor>();
 // Health endpoints (ADR-010; 08 §6): liveness = process up.
 // Readiness expands in P1+ to probe DB, queue and broker session (08 §6 readiness list).
 builder.Services.AddHealthChecks();
