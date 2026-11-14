@@ -2,7 +2,8 @@ namespace Nabd.TelemetryStore.Contracts;
 
 public sealed record ReadingBatchDto(Guid TenantId, Guid DeviceId, IReadOnlyList<ReadingDto> Readings);
 
-public sealed record ReadingDto(string ChannelKey, DateTimeOffset TimeUtc, double Value, long Seq);
+/// <summary>ReceivedAtUtc rides per reading: the store's received_at column is NOT NULL (0003), and the pipeline's stage 5 stamps it on every normalized reading.</summary>
+public sealed record ReadingDto(string ChannelKey, DateTimeOffset TimeUtc, double Value, long Seq, DateTimeOffset ReceivedAtUtc);
 
 public sealed record HistoryQuery(Guid TenantId, Guid DeviceId, DateTimeOffset FromUtc, DateTimeOffset ToUtc);
 
@@ -19,4 +20,16 @@ public interface IReadingsStore
     Task StoreBatchAsync(ReadingBatchDto batch, CancellationToken ct = default);
 
     Task<IReadOnlyList<ReadingValueDto>> GetHistoryAsync(HistoryQuery query, CancellationToken ct = default);
+}
+
+/// <summary>
+/// The TelemetryStore room's device-presence port (plan/05 §9): marks are buffered
+/// in memory and flushed as ONE bulk upsert per window — never one UPDATE per
+/// reading. The flush CADENCE is hosted in ProcessingHost; the buffer and the
+/// write belong to this room.
+/// </summary>
+public interface IDeviceStatusTracker
+{
+    /// <summary>Buffer a device's latest presence. O(1), in-memory; the oldest flush window pays the DB, nobody else.</summary>
+    Task MarkSeenAsync(Guid deviceId, Guid tenantId, DateTimeOffset lastSeenUtc, DateTimeOffset lastEventTimeUtc, CancellationToken ct = default);
 }
