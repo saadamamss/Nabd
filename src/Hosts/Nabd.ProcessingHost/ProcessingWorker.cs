@@ -2,6 +2,7 @@ namespace Nabd.ProcessingHost;
 
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Configuration;
 using Nabd.Assets;
 using Nabd.Ingestion;
 using Nabd.Ingestion.Contracts;
@@ -10,17 +11,20 @@ using Nabd.TelemetryStore.Contracts;
 
 /// <summary>
 /// Processing Host worker (03 §5): the composition root's long-running loop.
-/// P3 spec 03: consumer → sink (pipeline + store port) — the validation
-/// pipeline is LIVE on the MQTT path. The store port is the LoggingReadingsStore
-/// placeholder until spec 04's batch writer lands at THIS wiring line only.
+/// P3 spec 04: the REAL batch store is wired — LoggingReadingsStore is retired.
+/// The placeholder was replaced at THIS wiring line only; the pipeline, sink
+/// and tests never changed (the seam held).
 /// </summary>
 public sealed class ProcessingWorker(
+    IConfiguration configuration,
+    DeviceStatusTracker tracker,
+    TelemetryStoreDb telemetryDb,
     ILogger<ProcessingWorker> logger,
     ILoggerFactory loggerFactory) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        logger.LogInformation("ProcessingHost up — P3 spec 03: wiring the validation pipeline.");
+        logger.LogInformation("ProcessingHost up — P3 spec 04: the real batch store is wired.");
 
         // Fail-shut chain: ConsumerAccess throws at boot without its env (NFR-08).
         var access = new ConsumerAccess();
@@ -29,10 +33,12 @@ public sealed class ProcessingWorker(
         var edges = new IngestionEdges(new AssetsDb());
 
         var pipeline = new ValidationPipeline(edges, edges);
-        var telemetryDb = new TelemetryStoreDb();                       // the TelemetryStore room's door (0018 grants)
-        var tracker = new DeviceStatusTracker(telemetryDb);             // RED stub until spec 04 lands
-        IReadingsStore store = new LoggingReadingsStore(
-            loggerFactory.CreateLogger<LoggingReadingsStore>());   // spec 04 replaces HERE only → PostgresReadingsStore
+
+        // The tracker + DB door come from DI (Program.cs) — ONE shared instance,
+        // the same buffer the flush worker drains on its cadence.
+        var batchSize = configuration.GetValue("Ingestion:BatchSize", 500);
+        IReadingsStore store = new PostgresReadingsStore(telemetryDb, batchSize);
+
         IIngestionSink sink = new PipelineIngestionSink(
             pipeline, store, tracker, loggerFactory.CreateLogger<PipelineIngestionSink>());
 
