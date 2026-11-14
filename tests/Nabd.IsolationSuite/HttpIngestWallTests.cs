@@ -73,7 +73,7 @@ public sealed class HttpIngestWallTests : IClassFixture<PostgresFixture>
     // ---- seeding: tenant (real door) → template+channels (owner lane) → --------
     // ---- asset (real door) → device + REAL token (real lifecycle) -------------
 
-    private async Task<(Guid Device, string Token)> SeedDeviceAsync()
+    private async Task<(Guid Device, string Token, TenantRegistrationResult Tenant)> SeedDeviceAsync()
     {
         var registration = new TenantRegistration(pg.Db);
         var reg = await registration.RegisterTenantAsync(new RegisterTenantRequest(
@@ -108,7 +108,7 @@ public sealed class HttpIngestWallTests : IClassFixture<PostgresFixture>
             new CallerContext(reg.Value.AdminUser.UserId, tenantId, ["tenant_admin"]),
             new DeviceCreateRequest(TargetTenantId: tenantId, AssetId: asset, Name: "Ingest Device"));
         Assert.True(minted.IsSuccess, $"SETUP failed (mint): {minted.Error}");
-        return (minted.Value.Device.DeviceId, minted.Value.Token);
+        return (minted.Value.Device.DeviceId, minted.Value.Token, reg.Value);
     }
 
     // ---- payload composers -----------------------------------------------------
@@ -149,7 +149,7 @@ public sealed class HttpIngestWallTests : IClassFixture<PostgresFixture>
     [Fact]
     public async Task an_anonymous_post_is_401_with_the_catalog_code()
     {
-        var (_, token) = await SeedDeviceAsync();   // seeded anyway: the door must not care
+        var (_, token, _) = await SeedDeviceAsync();   // seeded anyway: the door must not care
         var res = await PostAsync(null, Payload("2026-11-14T12:00:00Z", 1, ("temperature", 22.5)));
         var (status, code, _) = Read(res, await res.Content.ReadAsStringAsync());
 
@@ -162,10 +162,10 @@ public sealed class HttpIngestWallTests : IClassFixture<PostgresFixture>
     [Fact]
     public async Task a_revoked_token_is_401_and_the_security_event_is_logged()
     {
-        var (device, token) = await SeedDeviceAsync();
+        var (device, token, tenant) = await SeedDeviceAsync();
         var devices = new DeviceLifecycle(pg.Assets, new DeviceTokenHasher());
         var revoke = await devices.RevokeDeviceAsync(
-            new CallerContext(Guid.NewGuid(), Guid.NewGuid(), ["tenant_admin"]), device);
+            new CallerContext(tenant.AdminUser.UserId, tenant.Tenant.TenantId, ["tenant_admin"]), device);
         Assert.True(revoke.IsSuccess, $"SETUP failed (revoke): {revoke.Error}");
 
         var res = await PostAsync(token, Payload("2026-11-14T12:00:00Z", 1, ("temperature", 22.5)));
@@ -182,7 +182,7 @@ public sealed class HttpIngestWallTests : IClassFixture<PostgresFixture>
     [Fact]
     public async Task a_501_reading_batch_is_rejected_4xx()
     {
-        var (_, token) = await SeedDeviceAsync();
+        var (_, token, _) = await SeedDeviceAsync();
         var big = Payload("2026-11-14T12:00:00Z", 1,
             Enumerable.Range(0, 501).Select(i => ("temperature", (double)i)).ToArray());
 
@@ -198,7 +198,7 @@ public sealed class HttpIngestWallTests : IClassFixture<PostgresFixture>
     [Fact]
     public async Task a_body_over_1mb_is_413()
     {
-        var (_, token) = await SeedDeviceAsync();
+        var (_, token, _) = await SeedDeviceAsync();
         var fat = Payload("2026-11-14T12:00:00Z", 1, ("temperature", 22.5)) + " " + new string('x', 1_100_000);
 
         var res = await PostAsync(token, fat);
@@ -212,7 +212,7 @@ public sealed class HttpIngestWallTests : IClassFixture<PostgresFixture>
     [Fact]
     public async Task an_unknown_channel_is_422_with_the_catalog_code()
     {
-        var (_, token) = await SeedDeviceAsync();
+        var (_, token, _) = await SeedDeviceAsync();
         var res = await PostAsync(token, Payload("2026-11-14T12:00:00Z", 1, ("pressure", 1.0)));
         var (status, code, _) = Read(res, await res.Content.ReadAsStringAsync());
 
@@ -225,7 +225,7 @@ public sealed class HttpIngestWallTests : IClassFixture<PostgresFixture>
     [Fact]
     public async Task an_infinite_value_is_422_range()
     {
-        var (_, token) = await SeedDeviceAsync();
+        var (_, token, _) = await SeedDeviceAsync();
         var res = await PostAsync(token, """{"v":1,"ts":"2026-11-14T12:00:00Z","seq":1,"rr":[{"t":1e400,"c":"temperature"}]}""");
         var (status, code, _) = Read(res, await res.Content.ReadAsStringAsync());
 
@@ -238,7 +238,7 @@ public sealed class HttpIngestWallTests : IClassFixture<PostgresFixture>
     [Fact]
     public async Task a_bare_nan_literal_is_400_invalid_not_range()
     {
-        var (_, token) = await SeedDeviceAsync();
+        var (_, token, _) = await SeedDeviceAsync();
         var res = await PostAsync(token, """{"v":1,"ts":"2026-11-14T12:00:00Z","seq":1,"rr":[{"t":NaN,"c":"temperature"}]}""");
         var (status, code, _) = Read(res, await res.Content.ReadAsStringAsync());
 
@@ -251,7 +251,7 @@ public sealed class HttpIngestWallTests : IClassFixture<PostgresFixture>
     [Fact]
     public async Task the_31st_request_in_minute_one_is_429_with_a_backoff_hint()
     {
-        var (_, token) = await SeedDeviceAsync();
+        var (_, token, _) = await SeedDeviceAsync();
         var payload = Payload("2026-11-14T12:00:00Z", 1, ("temperature", 22.5));
 
         HttpResponseMessage? last = null;
@@ -271,7 +271,7 @@ public sealed class HttpIngestWallTests : IClassFixture<PostgresFixture>
     [Fact]
     public async Task reposting_the_same_batch_never_duplicates()
     {
-        var (device, token) = await SeedDeviceAsync();
+        var (device, token, _) = await SeedDeviceAsync();
         var payload = Payload("2026-11-14T12:00:00Z", 7, ("temperature", 22.5), ("humidity", 61.0), ("door", 1.0));
 
         var r1 = await PostAsync(token, payload);
@@ -294,7 +294,7 @@ public sealed class HttpIngestWallTests : IClassFixture<PostgresFixture>
     [Fact]
     public async Task a_far_future_ts_is_clamped_with_a_warning_still_200()
     {
-        var (device, token) = await SeedDeviceAsync();
+        var (device, token, _) = await SeedDeviceAsync();
         var future = DateTime.UtcNow.AddMinutes(10).ToString("yyyy-MM-dd'T'HH:mm:ss'Z'");
 
         var res = await PostAsync(token, Payload(future, 1, ("temperature", 22.5)));
@@ -317,8 +317,9 @@ public sealed class HttpIngestWallTests : IClassFixture<PostgresFixture>
     [Fact]
     public async Task a_per_reading_ts_override_lands_with_its_own_time()
     {
-        var (device, token) = await SeedDeviceAsync();
-        var t0 = DateTime.UtcNow.AddSeconds(-60);
+        var (device, token, _) = await SeedDeviceAsync();
+        var raw = DateTime.UtcNow.AddSeconds(-60);
+        var t0 = new DateTime(raw.Ticks - (raw.Ticks % TimeSpan.TicksPerSecond), DateTimeKind.Utc);   // whole seconds — the composer's precision
         var t0s = t0.ToString("yyyy-MM-dd'T'HH:mm:ss'Z'");
         var over = t0.AddSeconds(120).ToString("yyyy-MM-dd'T'HH:mm:ss'Z'");
 
