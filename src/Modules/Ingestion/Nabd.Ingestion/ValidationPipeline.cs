@@ -11,7 +11,7 @@ using Nabd.Ingestion.Contracts;
 /// Clock discipline NEVER rejects (plan/05 §6): a far-future stamp is CLAMPED to
 /// received_at, a stale stamp is accepted-and-flagged — both as E422_TS warnings.
 /// </summary>
-public sealed class ValidationPipeline(IDeviceChannels channels, IIngestionIdentity identity)
+public sealed class ValidationPipeline(IDeviceChannels channels, IIngestionIdentity identity, int maxReadingsPerBatch = PayloadV1Parser.MaxReadingsPerMessage)
 {
     /// <summary>Clock rules (plan/05 §8) — the ONLY home of these constants.</summary>
     private static readonly TimeSpan FutureClamp = TimeSpan.FromMinutes(5);
@@ -31,8 +31,8 @@ public sealed class ValidationPipeline(IDeviceChannels channels, IIngestionIdent
                 "unknown device or channel catalog (uniform rejection — no existence hints)");
         }
 
-        // Stage 3: structure (payload v1, seq bound, count bound).
-        if (!PayloadV1Parser.TryParse(envelope.Payload, out var batch, out var error) || batch is null)
+        // Stage 3: structure (payload v1, seq bound, count bound — THIS transport's cap).
+        if (!PayloadV1Parser.TryParse(envelope.Payload, maxReadingsPerBatch, out var batch, out var error) || batch is null)
         {
             return PipelineResult.Fail(IngestionErrors.DLQ_INVALID, error ?? "unparseable payload-v1");
         }
@@ -58,28 +58,33 @@ public sealed class ValidationPipeline(IDeviceChannels channels, IIngestionIdent
             index++;
         }
 
-        // Stage 5: clock discipline (plan/05 §8) — sanitize, never reject.
+        // Stage 5: clock discipline (plan/05 §8) — sanitize, never reject. Per
+        // READING now: the batch ts governs unless a reading carries its own ts
+        // override (plan/05 §5 batch form); each effective event time is checked
+        // against the same future-clamp / stale-flag window.
         var warnings = new List<string>();
-        var eventTime = batch.TimeUtc;
-        if (eventTime - envelope.ReceivedAtUtc > FutureClamp)
+        var readings = new List<NormalizedReading>(batch.Readings.Count);
+        foreach (var reading in batch.Readings)
         {
-            // Power-loss clock reset: the device thinks it lives in the future.
-            // Clamp to the server's receive time — event time is never trusted alone.
-            eventTime = envelope.ReceivedAtUtc;
-            warnings.Add(IngestionErrors.E422_TS);
-        }
-        else if (envelope.ReceivedAtUtc - eventTime > StaleFlag)
-        {
-            // Store-and-forward flood: old but honest. Accept, flag, move on
-            // (dashboards on event time will bucket it where it belongs).
-            warnings.Add(IngestionErrors.E422_TS);
-        }
+            var eventTime = reading.TimeUtc ?? batch.TimeUtc;
+            if (eventTime - envelope.ReceivedAtUtc > FutureClamp)
+            {
+                // Power-loss clock reset: the device thinks it lives in the future.
+                // Clamp to the server's receive time — event time is never trusted alone.
+                eventTime = envelope.ReceivedAtUtc;
+                if (!warnings.Contains(IngestionErrors.E422_TS)) warnings.Add(IngestionErrors.E422_TS);
+            }
+            else if (envelope.ReceivedAtUtc - eventTime > StaleFlag)
+            {
+                // Store-and-forward flood: old but honest. Accept, flag, move on
+                // (dashboards on event time will bucket it where it belongs).
+                if (!warnings.Contains(IngestionErrors.E422_TS)) warnings.Add(IngestionErrors.E422_TS);
+            }
 
-        var readings = batch.Readings
-            .Select(r => new NormalizedReading(
-                tenant.Value, envelope.DeviceId, r.ChannelKey,
-                eventTime, r.Value, batch.Seq, envelope.ReceivedAtUtc))
-            .ToList();
+            readings.Add(new NormalizedReading(
+                tenant.Value, envelope.DeviceId, reading.ChannelKey,
+                eventTime, reading.Value, batch.Seq, envelope.ReceivedAtUtc));
+        }
 
         return PipelineResult.Ok(readings, warnings);
     }

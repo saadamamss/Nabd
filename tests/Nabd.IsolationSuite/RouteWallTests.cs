@@ -79,8 +79,12 @@ public sealed class RouteWallTests
             .OrderBy(x => x)
             .ToList();
 
-        // spec 05: the reset doors join the pre-auth club (reset_request/reset_confirm)
-        Assert.Equal(["Login", "Logout", "Refresh", "Register", "ResetConfirm", "ResetRequest"], named);
+        // spec 05: the reset doors join the pre-auth club (reset_request/reset_confirm);
+        // spec 05 (P3): the ingest door joins too — a NEW anonymous lane, the
+        // device-token door (plan/05 §4). It is self-walling (401 by its own
+        // VerifyTokenAsync lane, proven in HttpIngestWallTests), so the club
+        // grows by exactly this member.
+        Assert.Equal(["Login", "Logout", "Post", "Refresh", "Register", "ResetConfirm", "ResetRequest"], named);
     }
 
     // ---- fact 3: policy never admits what the matrix denies (drift detector) ---
