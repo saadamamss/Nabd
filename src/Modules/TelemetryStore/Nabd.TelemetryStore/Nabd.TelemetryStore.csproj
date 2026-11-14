@@ -1,6 +1,10 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
+    <PackageReference Include="Npgsql" Version="10.0.3" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\..\..\SharedKernel\Nabd.SharedKernel\Nabd.SharedKernel.csproj" />
     <ProjectReference Include="..\Nabd.TelemetryStore.Contracts\Nabd.TelemetryStore.Contracts.csproj" />
     <ProjectReference Include="..\..\Ingestion\Nabd.Ingestion.Contracts\Nabd.Ingestion.Contracts.csproj" />

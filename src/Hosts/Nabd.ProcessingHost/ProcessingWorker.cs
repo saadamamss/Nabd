@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging;
 using Nabd.Assets;
 using Nabd.Ingestion;
 using Nabd.Ingestion.Contracts;
+using Nabd.TelemetryStore;
 using Nabd.TelemetryStore.Contracts;
 
 /// <summary>
@@ -28,10 +29,12 @@ public sealed class ProcessingWorker(
         var edges = new IngestionEdges(new AssetsDb());
 
         var pipeline = new ValidationPipeline(edges, edges);
+        var telemetryDb = new TelemetryStoreDb();                       // the TelemetryStore room's door (0018 grants)
+        var tracker = new DeviceStatusTracker(telemetryDb);             // RED stub until spec 04 lands
         IReadingsStore store = new LoggingReadingsStore(
-            loggerFactory.CreateLogger<LoggingReadingsStore>());   // spec 04 replaces HERE only
+            loggerFactory.CreateLogger<LoggingReadingsStore>());   // spec 04 replaces HERE only → PostgresReadingsStore
         IIngestionSink sink = new PipelineIngestionSink(
-            pipeline, store, loggerFactory.CreateLogger<PipelineIngestionSink>());
+            pipeline, store, tracker, loggerFactory.CreateLogger<PipelineIngestionSink>());
 
         var consumer = new EmqxIngestConsumer(
             access, sink, loggerFactory.CreateLogger("Nabd.Ingestion.Consumer"));

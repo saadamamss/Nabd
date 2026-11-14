@@ -7,12 +7,13 @@ using Nabd.Ingestion.Contracts;
 using Nabd.TelemetryStore.Contracts;
 using Xunit;
 
-// P3 spec 03 — the store-ordering LAW, made executable: the sink runs the
+// P3 spec 03+04 — the sink's LAWS, made executable: (a) the sink runs the
 // pipeline FIRST and hands the store port a batch ONLY when the pipeline
-// accepted. A rejected delivery reaches no INSERT — the same idea as the
-// ADR-005 VETO's 200-after-commit: acknowledge/store only after the data is
-// real. (The pure pipeline's 9 facts live in ValidationPipelineTests; this net
-// pins the ORDERING around it.)
+// accepted — a rejected delivery reaches no INSERT (nothing malformed can reach
+// an INSERT, NFR-04's gate); (b) every ACCEPTED batch marks the device seen
+// (plan/05 §9, buffered — one bulk flush per window); (c) a store FAILURE
+// propagates OUT of the sink — never swallowed — so the consumer's catch leaves
+// the message un-acked and the broker redelivers (ack-after-commit, NFR-04).
 
 public sealed class PipelineSinkTests
 {
@@ -33,6 +34,25 @@ public sealed class PipelineSinkTests
             => Task.FromResult<IReadOnlyList<ReadingValueDto>>([]);
     }
 
+    private sealed class ThrowingStore : IReadingsStore
+    {
+        public Task StoreBatchAsync(ReadingBatchDto batch, CancellationToken ct = default)
+            => throw new InvalidOperationException("simulated commit failure");
+
+        public Task<IReadOnlyList<ReadingValueDto>> GetHistoryAsync(HistoryQuery query, CancellationToken ct = default)
+            => Task.FromResult<IReadOnlyList<ReadingValueDto>>([]);
+    }
+
+    private sealed class RecordingTracker : IDeviceStatusTracker
+    {
+        public List<(Guid Device, Guid Tenant, DateTimeOffset Seen, DateTimeOffset Event)> Marks { get; } = [];
+        public Task MarkSeenAsync(Guid deviceId, Guid tenantId, DateTimeOffset lastSeenUtc, DateTimeOffset lastEventTimeUtc, CancellationToken ct = default)
+        {
+            Marks.Add((deviceId, tenantId, lastSeenUtc, lastEventTimeUtc));
+            return Task.CompletedTask;
+        }
+    }
+
     private sealed class FakeChannels : IDeviceChannels
     {
         public Task<IReadOnlySet<string>?> GetChannelKeysAsync(Guid deviceId, CancellationToken ct = default)
@@ -45,9 +65,13 @@ public sealed class PipelineSinkTests
             => Task.FromResult<Guid?>(deviceId == Device ? Tenant : null);
     }
 
-    private static PipelineIngestionSink Sink(RecordingStore store)
-        => new(new ValidationPipeline(new FakeChannels(), new FakeIdentity()), store,
-               NullLogger<PipelineIngestionSink>.Instance);
+    private static (PipelineIngestionSink Sink, RecordingTracker Tracker) Sink(IReadingsStore store)
+    {
+        var tracker = new RecordingTracker();
+        return (new PipelineIngestionSink(
+                    new ValidationPipeline(new FakeChannels(), new FakeIdentity()),
+                    store, tracker, NullLogger<PipelineIngestionSink>.Instance), tracker);
+    }
 
     private static IngestEnvelope Envelope(string json)
         => new(Device, $"t/{Tenant}/dev/{Device}/v1", Encoding.UTF8.GetBytes(json), ReceivedAt);
@@ -58,13 +82,15 @@ public sealed class PipelineSinkTests
         return $$"""{"v":1,"ts":"{{ts}}","seq":{{seq}},"rr":[{{rr}}]}""";
     }
 
-    // ---- fact 1: an accepted delivery reaches the store EXACTLY once, shaped ---
+    // ---- fact 1: an accepted delivery reaches the store EXACTLY once, shaped, ---
+    // ---- and marks the device seen once ---------------------------------------
 
     [Fact]
-    public async Task an_accepted_delivery_reaches_the_store_once_and_shaped()
+    public async Task an_accepted_delivery_reaches_the_store_once_and_shaped_and_marks_seen()
     {
         var store = new RecordingStore();
-        await Sink(store).AcceptAsync(Envelope(Payload("2026-11-14T11:59:30.000Z", 7, (22.5, "temp"), (61.0, "hum"))));
+        var (sink, tracker) = Sink(store);
+        await sink.AcceptAsync(Envelope(Payload("2026-11-14T11:59:30.000Z", 7, (22.5, "temp"), (61.0, "hum"))));
 
         var batch = Assert.Single(store.Batches);
         Assert.Equal(Tenant, batch.TenantId);
@@ -73,18 +99,40 @@ public sealed class PipelineSinkTests
         Assert.Equal("temp", batch.Readings[0].ChannelKey);
         Assert.Equal(22.5, batch.Readings[0].Value);
         Assert.Equal(7, batch.Readings[0].Seq);
+        Assert.Equal(ReceivedAt, batch.Readings[0].ReceivedAtUtc);   // received_at rides per reading (0003 NOT NULL)
+
+        var mark = Assert.Single(tracker.Marks);
+        Assert.Equal((Device, Tenant, ReceivedAt, DateTimeOffset.Parse("2026-11-14T11:59:30.000Z")), mark);
     }
 
-    // ---- fact 2: a rejected delivery NEVER reaches the store -------------------
+    // ---- fact 2: a rejected delivery NEVER reaches the store, NEVER marks -------
 
     [Fact]
-    public async Task a_rejected_delivery_never_reaches_the_store()
+    public async Task a_rejected_delivery_never_reaches_the_store_nor_marks_seen()
     {
         var store = new RecordingStore();
+        var (sink, tracker) = Sink(store);
 
-        await Sink(store).AcceptAsync(Envelope("this is not json"));
-        await Sink(store).AcceptAsync(Envelope(Payload("2026-11-14T11:59:30.000Z", 1, (1.0, "pressure"))));
+        await sink.AcceptAsync(Envelope("this is not json"));
+        await sink.AcceptAsync(Envelope(Payload("2026-11-14T11:59:30.000Z", 1, (1.0, "pressure"))));
 
-        Assert.Empty(store.Batches);   // two rejections, zero INSERTs — the law holds
+        Assert.Empty(store.Batches);    // two rejections, zero INSERTs — the law holds
+        Assert.Empty(tracker.Marks);    // and nothing unseen ever "was seen"
+    }
+
+    // ---- fact 3: a store failure PROPAGATES — the ack law's half ---------------
+
+    [Fact]
+    public async Task a_store_failure_propagates_out_of_the_sink_never_swallowed()
+    {
+        var (sink, tracker) = Sink(new ThrowingStore());
+
+        // No try/catch inside the sink: the consumer's catch is the one and only
+        // handler — the message stays un-acked and the broker redelivers, and the
+        // idempotent re-insert makes that redelivery harmless (NFR-04).
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => sink.AcceptAsync(Envelope(Payload("2026-11-14T11:59:30.000Z", 7, (22.5, "temp")))));
+
+        Assert.Empty(tracker.Marks);    // no presence recorded for data that never landed
     }
 }
