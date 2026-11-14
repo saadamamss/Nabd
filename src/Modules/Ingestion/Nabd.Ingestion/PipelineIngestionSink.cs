@@ -13,6 +13,8 @@ using Nabd.TelemetryStore.Contracts;
 /// 3. a store FAILURE PROPAGATES OUT — never swallowed — so the consumer's
 ///    catch leaves the message un-acked and the broker redelivers (NFR-04's
 ///    ack-after-commit; crash between commit and ack = idempotent re-insert).
+/// 4. (SPEC 06) a rejected delivery is NEVER silent: raw bytes + reason land
+///    in telemetry.raw_rejects (0019) and the reason increments its counter.
 /// Rejections stay LOUD: logged with their catalog code (spec 06 adds the
 /// raw_rejects table beside this log line — never a silent drop).
 /// </summary>
@@ -20,20 +22,37 @@ public sealed class PipelineIngestionSink(
     ValidationPipeline pipeline,
     IReadingsStore store,
     IDeviceStatusTracker deviceStatus,
+    IRawRejectStore rawRejects,
+    RejectionCounters counters,
     ILogger<PipelineIngestionSink> logger) : IIngestionSink
 {
     public async Task AcceptAsync(IngestEnvelope envelope, CancellationToken ct = default)
     {
+
         var result = await pipeline.RunAsync(envelope, ct);
 
         if (!result.IsAccepted)
         {
             var rejected = result.Rejected!;
+
+            // SPEC 06 — the DESTINATION law: a rejection is never silent.
+            // Raw bytes verbatim + catalog reason land in telemetry.raw_rejects
+            // (0019, the VETO-shaped destination), and the reason counts.
+            // (HTTP-path rejections do NOT land here — the 4xx response IS
+            // that client's receipt; this table is the MQTT path's ledger.)
+            await rawRejects.StoreAsync(new RawRejectDto(
+                envelope.ReceivedAtUtc,          // time = received at MVP (forensics, not a time series)
+                envelope.ReceivedAtUtc,
+                TenantId: null,                  // identity may precede/fail resolution — nullable by design
+                DeviceId: envelope.DeviceId,
+                rejected.Code,
+                envelope.Payload));
+
+            counters.Increment(rejected.Code);
+
             logger.LogWarning(
-                "ingest REJECTED code={Code} detail={Detail} device={DeviceId} topic={Topic}",
+                "ingest REJECTED code={Code} detail={Detail} device={DeviceId} topic={Topic} → raw_rejects",
                 rejected.Code, rejected.Detail, envelope.DeviceId, envelope.Topic);
-            // spec 06 (migration 0019): rejections land in telemetry.raw_rejects
-            // WITH the raw bytes. Until then this log line IS the contract.
             return;
         }
 
