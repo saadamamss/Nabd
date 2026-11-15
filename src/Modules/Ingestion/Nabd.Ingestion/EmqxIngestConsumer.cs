@@ -58,24 +58,34 @@ public sealed class EmqxIngestConsumer(IConsumerAccess access, IIngestionSink si
                 await client.ConnectAsync(options, stoppingToken);
                 backoff = BackoffMin;                     // connected: reset the ladder
 
-                var subscribe = await client.SubscribeAsync(
-                    new MqttClientSubscribeOptionsBuilder()
-                        .WithTopicFilter("t/+/dev/+/v1", MqttQualityOfServiceLevel.AtLeastOnce)
-                        .Build(), stoppingToken);
-                var grant = subscribe.Items.First();
-                if (grant.ResultCode is not (MqttClientSubscribeResultCode.GrantedQoS0
-                                             or MqttClientSubscribeResultCode.GrantedQoS1
-                                             or MqttClientSubscribeResultCode.GrantedQoS2))
+                // Spec 09 official-run finding (third sibling of the spec-07 fixes):
+                // a subscribe DENIAL does NOT drop the connection, so the IsConnected
+                // poll cannot see it — the old code logged "will retry" and then held
+                // a connected-but-UNSUBSCRIBED client while the broker dropped every
+                // message as unroutable. The denial is transient by design (the authz
+                // door points at the API host, which may boot after EMQX): re-ask the
+                // grant until it is given — or until the connection itself dies, and
+                // the backoff ladder reconnects.
+                var granted = false;
+                while (!stoppingToken.IsCancellationRequested && client.IsConnected && !granted)
                 {
-                    logger.LogWarning(
-                        "MQTT consumer subscribe DENIED ({Code}) — check the ACL door; will retry",
-                        grant.ResultCode);
+                    var subscribe = await client.SubscribeAsync(
+                        new MqttClientSubscribeOptionsBuilder()
+                            .WithTopicFilter("t/+/dev/+/v1", MqttQualityOfServiceLevel.AtLeastOnce)
+                            .Build(), stoppingToken);
+                    var grant = subscribe.Items.First();
+                    granted = grant.ResultCode is (MqttClientSubscribeResultCode.GrantedQoS0
+                                                   or MqttClientSubscribeResultCode.GrantedQoS1
+                                                   or MqttClientSubscribeResultCode.GrantedQoS2);
+                    if (!granted)
+                    {
+                        logger.LogWarning(
+                            "MQTT consumer subscribe DENIED ({Code}) — the door isn't up yet; re-asking in {Delay}",
+                            grant.ResultCode, BackoffMin);
+                        await Task.Delay(BackoffMin, stoppingToken);
+                    }
                 }
-                else
-                {
-                    logger.LogInformation("MQTT consumer subscribed to t/+/dev/+/v1 (granted {Code})",
-                        grant.ResultCode);
-                }
+                logger.LogInformation("MQTT consumer subscribed to t/+/dev/+/v1");
 
                 // Hold the connection open; deliveries arrive through the handler.
                 // AFTER (the fix): poll IsConnected — a keepalive death during a broker
