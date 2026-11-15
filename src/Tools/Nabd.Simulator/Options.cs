@@ -10,6 +10,7 @@ public sealed class SimulatorOptions
     public string Scenario { get; init; } = "steady";
     public double Rate { get; init; } = 1;
     public double? RunFor { get; init; }        // seconds — the clean-stop bound (null = unbounded)
+    public int Dup { get; init; } = 1;          // publish each message k times — the duplicate-flood rider (spec 09)
     public double? SpikeTo { get; init; }
     public int? SpikeEvery { get; init; }
     public int? SpikeHoldFor { get; init; }
@@ -29,6 +30,7 @@ public sealed class SimulatorOptions
           --every    <n>            (spike: a plateau opens every n-th cycle)
           --hold-for <s>            (spike: the plateau lasts s cycles)
           --run-for  <s>            (dropout: publish for s seconds, then stop CLEANLY)
+          --dup      <k>            (publish each message k times — the duplicate-flood rider; default 1)
         """;
 
     public static SimulatorOptions Parse(string[] args)
@@ -39,6 +41,7 @@ public sealed class SimulatorOptions
         double rate = 1;
         double? runFor = null, spikeTo = null;
         int? spikeEvery = null, spikeHoldFor = null;
+        var dup = 1;
         var channels = new List<(double Value, string Channel)>();
 
         for (var i = 0; i < args.Length; i += 2)
@@ -72,6 +75,11 @@ public sealed class SimulatorOptions
                     if (!double.TryParse(args[i + 1], out var runForValue) || runForValue <= 0)
                         throw new ArgumentException($"--run-for must be a positive number of seconds: '{args[i + 1]}'\n{Usage}");
                     runFor = runForValue;
+                    break;
+                case "--dup":
+                    if (!int.TryParse(args[i + 1], out var dupValue) || dupValue <= 0)
+                        throw new ArgumentException($"--dup must be a positive integer: '{args[i + 1]}'\n{Usage}");
+                    dup = dupValue;
                     break;
                 case "--spike-to":
                     if (!double.TryParse(args[i + 1], out var spikeToValue))
@@ -112,7 +120,7 @@ public sealed class SimulatorOptions
         {
             Host = host, Port = port, DeviceId = device, Token = token,
             TenantId = tenant, Scenario = scenario, Rate = rate,
-            RunFor = runFor, SpikeTo = spikeTo,
+            RunFor = runFor, Dup = dup, SpikeTo = spikeTo,
             SpikeEvery = spikeEvery, SpikeHoldFor = spikeHoldFor,
             Channels = channels,
         };

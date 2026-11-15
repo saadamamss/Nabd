@@ -260,4 +260,34 @@ public sealed class SimulatorToolTests
         Assert.True(Dropout.Due(options, TimeSpan.FromSeconds(30)));
         Assert.Equal("dropout: stopped after 30 s, last seq=1172", Dropout.StopLine(30, 1172));
     }
+
+    // ---- P3 spec 09: the duplicate-flood rider's --dup --------------------------
+
+    [Fact]
+    public void parse_reads_dup_and_defaults_to_one()
+    {
+        var plain = SimulatorOptions.Parse([
+            "--device", Device, "--token", Token, "--tenant", Tenant,
+            "--channel", "temperature=5.0",
+        ]);
+        Assert.Equal(1, plain.Dup);
+
+        var rider = SimulatorOptions.Parse([
+            "--device", Device, "--token", Token, "--tenant", Tenant,
+            "--channel", "temperature=5.0", "--dup", "10",
+        ]);
+        Assert.Equal(10, rider.Dup);
+    }
+
+    [Fact]
+    public void parse_refuses_a_non_positive_dup()
+    {
+        var ex = Record.Exception(() => SimulatorOptions.Parse([
+            "--device", Device, "--token", Token, "--tenant", Tenant,
+            "--channel", "temperature=5.0", "--dup", "0",
+        ]));
+
+        Assert.IsType<ArgumentException>(ex);
+        Assert.Contains("--dup", ex!.Message);
+    }
 }
