@@ -89,8 +89,14 @@ internal static class Program
                         .WithQualityOfServiceLevel(MqttQualityOfServiceLevel.AtLeastOnce)
                         .Build();
 
-                    await broker.PublishAsync(message, stopping.Token); // QoS1: completion = the broker's PUBACK received
-                    Console.WriteLine($"[{DateTimeOffset.UtcNow:HH:mm:ss}] seq={seq} → {topic}");
+                    // P3 spec 09: --dup K replays the SAME payload K times (the
+                    // duplicate-flood rider) — K PUBACKs, one unique reading; the
+                    // K-1 copies are conflicts by design (plan/09 §4.1 row 6).
+                    for (var copy = 1; copy <= options.Dup; copy++)
+                    {
+                        await broker.PublishAsync(message, stopping.Token); // QoS1: completion = the broker's PUBACK received
+                        Console.WriteLine($"[{DateTimeOffset.UtcNow:HH:mm:ss}] seq={seq} → {topic}");
+                    }
 
                     await Task.Delay(TimeSpan.FromSeconds(1 / options.Rate), stopping.Token);
                 }
