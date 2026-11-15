@@ -171,4 +171,93 @@ public sealed class SimulatorToolTests
     private const string Device = "90b6f7c0-6394-4924-892b-677981fdae2b";
     private const string Tenant = "d3f448c2-af51-48a8-9a72-b23b6ba6e297";
     private const string Token = "not-a-real-token-just-for-parsing";
+
+    // ---- P3 spec 08: spike + dropout -------------------------------------------
+
+    [Fact]
+    public void spike_peaks_on_schedule_and_holds_baseline_between_plateaus()
+    {
+        var scenario = ScenarioRegistry.Create("spike", [(5.0, "temperature")],
+            spikeTo: 42.5, spikeEvery: 5, spikeHoldFor: 2);
+
+        Assert.Equal([(42.5, "temperature")], scenario.Tick(1));   // the plateau heads each block
+        Assert.Equal([(42.5, "temperature")], scenario.Tick(2));
+        Assert.Equal([(5.0, "temperature")], scenario.Tick(3));    // back to baseline
+        Assert.Equal([(5.0, "temperature")], scenario.Tick(5));
+        Assert.Equal([(42.5, "temperature")], scenario.Tick(6));   // next block's plateau
+        Assert.Equal([(5.0, "temperature")], scenario.Tick(8));
+    }
+
+    [Fact]
+    public void spike_peak_lands_in_the_payloads_t_field()
+    {
+        var scenario = ScenarioRegistry.Create("spike", [(5.0, "temperature")],
+            spikeTo: 42.5, spikeEvery: 5, spikeHoldFor: 2);
+        var json = PayloadV1.Compose(7, DateTimeOffset.UtcNow, scenario.Tick(7));
+
+        Assert.Contains("42.5", json);
+    }
+
+    [Fact]
+    public void parse_reads_the_spike_and_run_for_flags()
+    {
+        var spike = SimulatorOptions.Parse([
+            "--device", Device, "--token", Token, "--tenant", Tenant,
+            "--channel", "temperature=5.0",
+            "--scenario", "spike", "--spike-to", "42.5", "--every", "5", "--hold-for", "2",
+        ]);
+        Assert.Equal(42.5, spike.SpikeTo);
+        Assert.Equal(5, spike.SpikeEvery);
+        Assert.Equal(2, spike.SpikeHoldFor);
+
+        var bounded = SimulatorOptions.Parse([
+            "--device", Device, "--token", Token, "--tenant", Tenant,
+            "--channel", "temperature=5.0", "--run-for", "30",
+        ]);
+        Assert.Equal(30.0, bounded.RunFor);
+    }
+
+    [Fact]
+    public void spike_refuses_to_start_without_its_three_flags()
+    {
+        var ex = Record.Exception(() => SimulatorOptions.Parse([
+            "--device", Device, "--token", Token, "--tenant", Tenant,
+            "--channel", "temperature=5.0", "--scenario", "spike",
+        ]));
+
+        Assert.IsType<ArgumentException>(ex);
+    }
+
+    [Fact]
+    public void dropout_refuses_to_start_without_run_for()
+    {
+        var ex = Record.Exception(() => SimulatorOptions.Parse([
+            "--device", Device, "--token", Token, "--tenant", Tenant,
+            "--channel", "temperature=5.0", "--scenario", "dropout",
+        ]));
+
+        Assert.IsType<ArgumentException>(ex);
+    }
+
+    [Fact]
+    public void dropout_publishes_normally_until_the_clean_stop()
+    {
+        // dropout = steady values; the stop is --run-for's job, not a value pattern
+        var scenario = ScenarioRegistry.Create("dropout", [(5.0, "temperature")]);
+
+        Assert.Equal(scenario.Tick(1), scenario.Tick(999));
+    }
+
+    [Fact]
+    public void dropout_stops_on_schedule_and_names_the_last_seq()
+    {
+        var options = SimulatorOptions.Parse([
+            "--device", Device, "--token", Token, "--tenant", Tenant,
+            "--channel", "temperature=5.0", "--run-for", "30",
+        ]);
+
+        Assert.False(Dropout.Due(options, TimeSpan.FromSeconds(29)));
+        Assert.True(Dropout.Due(options, TimeSpan.FromSeconds(30)));
+        Assert.Equal("dropout: stopped after 30 s, last seq=1172", Dropout.StopLine(30, 1172));
+    }
 }
