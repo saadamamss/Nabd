@@ -78,7 +78,10 @@ public sealed class EmqxIngestConsumer(IConsumerAccess access, IIngestionSink si
                 }
 
                 // Hold the connection open; deliveries arrive through the handler.
-                await Task.Delay(Timeout.Infinite, stoppingToken);
+                // AFTER (the fix): poll IsConnected — a keepalive death during a broker
+                // blackout (drill 2) must wake the backoff ladder.
+                while (!stoppingToken.IsCancellationRequested && client.IsConnected)
+                    await Task.Delay(500, stoppingToken);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
