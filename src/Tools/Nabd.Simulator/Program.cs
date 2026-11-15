@@ -31,7 +31,8 @@ internal static class Program
         try
         {
             options = SimulatorOptions.Parse(args);
-            scenario = ScenarioRegistry.Create(options.Scenario, options.Channels);
+            scenario = ScenarioRegistry.Create(options.Scenario, options.Channels,
+                options.SpikeTo, options.SpikeEvery, options.SpikeHoldFor);
         }
         catch (ArgumentException ex)
         {
