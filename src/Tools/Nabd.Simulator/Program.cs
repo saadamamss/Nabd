@@ -50,6 +50,7 @@ internal static class Program
         var random = new Random();
         var seq = 0L;
         var attempt = 0;
+        var startedAt = DateTimeOffset.UtcNow;
 
         while (!stopping.IsCancellationRequested)
         {
@@ -71,6 +72,15 @@ internal static class Program
 
                 while (true)
                 {
+                    // P3 spec 08: the clean stop (--run-for). Checked BEFORE composing,
+                    // so the final line names the last PUBLISHED seq — never a ghost.
+                    if (Dropout.Due(options, DateTimeOffset.UtcNow - startedAt))
+                    {
+                        await DisconnectQuietlyAsync(broker);   // graceful — no error spam, exit code 0
+                        Console.WriteLine(Dropout.StopLine(options.RunFor!.Value, seq));
+                        return 0;
+                    }
+
                     seq++;
                     var message = new MqttApplicationMessageBuilder()
                         .WithTopic(topic)

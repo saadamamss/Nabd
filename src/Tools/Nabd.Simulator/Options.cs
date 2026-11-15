@@ -101,6 +101,12 @@ public sealed class SimulatorOptions
             throw new ArgumentException($"--tenant must be the tenantId (uuid): '{tenant}'\n{Usage}");
         if (channels.Count == 0)
             throw new ArgumentException("at least one --channel is required\n" + Usage);
+        // P3 spec 08: a scenario's flags are ITS contract — refuse, never guess.
+        if (scenario == "spike" && (spikeTo is null || spikeEvery is null || spikeHoldFor is null))
+            throw new ArgumentException(
+                "--scenario spike requires --spike-to, --every and --hold-for\n" + Usage);
+        if (scenario == "dropout" && runFor is null)
+            throw new ArgumentException("--scenario dropout requires --run-for\n" + Usage);
 
         return new SimulatorOptions
         {

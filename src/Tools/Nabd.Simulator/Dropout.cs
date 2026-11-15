@@ -8,9 +8,13 @@ namespace Nabd.Simulator;
 /// </summary>
 public static class Dropout
 {
+    /// <summary>True once the --run-for bound is spent — the publish loop checks
+    /// this BEFORE composing the next message, so the last seq is the last PUBLISHED one.</summary>
     public static bool Due(SimulatorOptions options, TimeSpan elapsed) =>
-        throw new NotImplementedException("P3 spec 08: owner implements from study/implementation-code.md");
+        options.RunFor is { } runFor && elapsed.TotalSeconds >= runFor;
 
+    /// <summary>THE final line (plan/05 §10): names the last published seq —
+    /// the offline watchdog (P4) consumes exactly this shape.</summary>
     public static string StopLine(double runForSeconds, long lastSeq) =>
-        throw new NotImplementedException("P3 spec 08: owner implements from study/implementation-code.md");
+        $"dropout: stopped after {runForSeconds:F0} s, last seq={lastSeq}";
 }

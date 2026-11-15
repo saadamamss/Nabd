@@ -22,8 +22,12 @@ public sealed class SpikeScenario(
 {
     public IReadOnlyList<(double Value, string Channel)> Tick(long seq)
     {
-        _ = peak; _ = every; _ = holdFor; _ = channels; _ = seq;   // stub — the owner's real body replaces this
-        throw new NotImplementedException("P3 spec 08: owner implements from study/implementation-code.md");
+        var rem = (seq - 1) % every;
+        if (rem < holdFor)
+        {
+            return channels.Select(c => (peak, c.Channel)).ToList();
+        }
+        return channels;
     }
 }
 
@@ -41,6 +45,7 @@ public static class ScenarioRegistry
                 spikeEvery ?? throw new ArgumentException("spike requires --every"),
                 spikeHoldFor ?? throw new ArgumentException("spike requires --hold-for"),
                 channels),
+            "dropout" => new SteadyScenario(channels),   // same values; the clean stop is --run-for's job
             _ => throw new ArgumentException($"unknown scenario '{name}' (v0 knows: steady, spike, dropout)"),
         };
 }
