@@ -16,12 +16,31 @@ public sealed class SteadyScenario : IScenario
     public IReadOnlyList<(double Value, string Channel)> Tick(long seq) => _channels;
 }
 
+public sealed class SpikeScenario(
+    double peak, int every, int holdFor,
+    IReadOnlyList<(double Value, string Channel)> channels) : IScenario
+{
+    public IReadOnlyList<(double Value, string Channel)> Tick(long seq)
+    {
+        _ = peak; _ = every; _ = holdFor; _ = channels; _ = seq;   // stub — the owner's real body replaces this
+        throw new NotImplementedException("P3 spec 08: owner implements from study/implementation-code.md");
+    }
+}
+
 public static class ScenarioRegistry
 {
-    public static IScenario Create(string name, IReadOnlyList<(double Value, string Channel)> channels) =>
+    public static IScenario Create(
+        string name,
+        IReadOnlyList<(double Value, string Channel)> channels,
+        double? spikeTo = null, int? spikeEvery = null, int? spikeHoldFor = null) =>
         name switch
         {
             "steady" => new SteadyScenario(channels),
-            _ => throw new ArgumentException($"unknown scenario '{name}' (v0 knows: steady)"),
+            "spike" => new SpikeScenario(
+                spikeTo ?? throw new ArgumentException("spike requires --spike-to"),
+                spikeEvery ?? throw new ArgumentException("spike requires --every"),
+                spikeHoldFor ?? throw new ArgumentException("spike requires --hold-for"),
+                channels),
+            _ => throw new ArgumentException($"unknown scenario '{name}' (v0 knows: steady, spike, dropout)"),
         };
 }
