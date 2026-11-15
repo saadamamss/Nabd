@@ -14,9 +14,13 @@ using Nabd.Ingestion.Contracts;
 /// the sink as an IngestEnvelope. Durability contract (NFR-04 at the MQTT
 /// hop): ack ONLY after the sink returns; a sink exception leaves the
 /// message unacknowledged — the broker redelivers, and the identity key
-/// makes the eventual re-store idempotent. The session is DURABLE
-/// (CleanStart on first connect only, SessionExpiryInterval 1h): messages
-/// published while the consumer is down are queued by the broker, not lost.
+/// makes the eventual re-store idempotent. The session is DURABLE and
+/// resumable (fixed client id = access.Username, CleanStart=false ALWAYS,
+/// SessionExpiryInterval 1h): the session is keyed by the client id, so a
+/// RESTARTED process resumes the SAME session and the broker redelivers
+/// everything queued or in-flight — drill 1's mechanism (spec 07). A random
+/// client id per connect (MQTTnet's default) orphans the queue forever:
+/// 63 lost in drill 1 run 1.
 /// MQTTnet 5.x carries no reconnect strategy — the jittered backoff ladder
 /// is ours (the simulator's shape: double from 1 s, cap 60 s, +jitter).
 /// </summary>
@@ -33,7 +37,6 @@ public sealed class EmqxIngestConsumer(IConsumerAccess access, IIngestionSink si
 
         var factory = new MqttClientFactory();
         var backoff = BackoffMin;
-        var firstConnect = true;
         while (!stoppingToken.IsCancellationRequested)
         {
             try
@@ -47,12 +50,12 @@ public sealed class EmqxIngestConsumer(IConsumerAccess access, IIngestionSink si
                     .WithTcpServer(host, port)
                     .WithCredentials(access.Username, secret)
                     .WithProtocolVersion(MqttProtocolVersion.V500)
-                    .WithCleanSession(firstConnect)       // resume the session on reconnects
+                    .WithClientId(access.Username)        // ← NEW: the session's stable identity — a RESTARTED process resumes the SAME session
+                    .WithCleanSession(false)              // ← CHANGED: clean start FALSE always — resume-or-create, never discard
                     .WithSessionExpiryInterval(3600)      // broker queues QoS1 for 1 h while we're down
                     .Build();
 
                 await client.ConnectAsync(options, stoppingToken);
-                firstConnect = false;
                 backoff = BackoffMin;                     // connected: reset the ladder
 
                 var subscribe = await client.SubscribeAsync(
