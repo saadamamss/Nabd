@@ -290,4 +290,152 @@ public sealed class SimulatorToolTests
         Assert.IsType<ArgumentException>(ex);
         Assert.Contains("--dup", ex!.Message);
     }
+
+    // ---- THE FLEET MODE (--devices-file, owner ruling 2026-11-17): one ------
+    // ---- PROCESS carries many devices — the instrumented gate caught the ----
+    // ---- 120-process fleet itself burning 4.3 of 8 cores (sched overhead) ---
+    // ---- while EMQX idled at 71% of ONE core. Fewer processes, same devices -
+
+    [Fact]
+    public void parse_reads_a_devices_file_into_the_fleet_list()
+    {
+        var file = Path.Combine(Path.GetTempPath(), $"nabd-sim-{Guid.NewGuid():N}.tsv");
+        File.WriteAllLines(file,
+        [
+            $"{Device}\t{Token}",
+            $"{Tenant}\tsecond-token",
+            "",                                  // blank line — skipped, never guessed
+            "# a comment — skipped",
+        ]);
+        try
+        {
+            var options = SimulatorOptions.Parse([
+                "--devices-file", file, "--tenant", Tenant,
+                "--channel", "temperature=5.0",
+            ]);
+
+            Assert.Equal([(Device, Token), (Tenant, "second-token")], options.Devices);
+            Assert.Null(options.DeviceId);       // the single-device core is ABSENT in fleet mode
+        }
+        finally { File.Delete(file); }
+    }
+
+    [Fact]
+    public void parse_refuses_devices_file_combined_with_the_single_device_core()
+    {
+        var ex = Record.Exception(() => SimulatorOptions.Parse([
+            "--devices-file", "/tmp/whatever.tsv", "--device", Device,
+            "--tenant", Tenant, "--channel", "x=1",
+        ]));
+
+        Assert.IsType<ArgumentException>(ex);
+        Assert.Contains("--devices-file", ex!.Message);
+    }
+
+    [Fact]
+    public void parse_refuses_a_devices_file_without_the_tenant()
+    {
+        var ex = Record.Exception(() =>
+            SimulatorOptions.Parse(["--devices-file", "/tmp/whatever.tsv", "--channel", "x=1"]));
+
+        Assert.IsType<ArgumentException>(ex);
+        Assert.Contains("--tenant", ex!.Message);
+    }
+
+    [Fact]
+    public void parse_refuses_an_unreadable_devices_file()
+    {
+        var ex = Record.Exception(() => SimulatorOptions.Parse([
+            "--devices-file", "/nonexistent/no-such-file.tsv", "--tenant", Tenant, "--channel", "x=1",
+        ]));
+
+        Assert.IsType<ArgumentException>(ex);  // fail fast AS a usage error — the caller's catch exits 2
+        Assert.Contains("--devices-file", ex!.Message);
+    }
+
+    [Fact]
+    public void parse_refuses_an_empty_devices_file()
+    {
+        var file = Path.Combine(Path.GetTempPath(), $"nabd-sim-{Guid.NewGuid():N}.tsv");
+        File.WriteAllLines(file, ["# only a comment", ""]);
+        try
+        {
+            var ex = Record.Exception(() => SimulatorOptions.Parse([
+                "--devices-file", file, "--tenant", Tenant, "--channel", "x=1",
+            ]));
+
+            Assert.IsType<ArgumentException>(ex);
+            Assert.Contains("no devices", ex!.Message);
+        }
+        finally { File.Delete(file); }
+    }
+
+    [Fact]
+    public void parse_refuses_a_devices_file_line_missing_its_token()
+    {
+        var file = Path.Combine(Path.GetTempPath(), $"nabd-sim-{Guid.NewGuid():N}.tsv");
+        File.WriteAllLines(file, [$"{Device}\t{Token}", Tenant]);   // second line: no tab, no token
+        try
+        {
+            var ex = Record.Exception(() => SimulatorOptions.Parse([
+                "--devices-file", file, "--tenant", Tenant, "--channel", "x=1",
+            ]));
+
+            Assert.IsType<ArgumentException>(ex);
+            Assert.Contains("dev<TAB>token", ex!.Message);
+        }
+        finally { File.Delete(file); }
+    }
+
+    [Fact]
+    public void parse_refuses_a_devices_file_with_a_mangled_device_id()
+    {
+        var file = Path.Combine(Path.GetTempPath(), $"nabd-sim-{Guid.NewGuid():N}.tsv");
+        File.WriteAllLines(file, [$"{Tenant}0\t{Token}"]);          // uuid-shaped, NOT a uuid
+        try
+        {
+            var ex = Record.Exception(() => SimulatorOptions.Parse([
+                "--devices-file", file, "--tenant", Tenant, "--channel", "x=1",
+            ]));
+
+            Assert.IsType<ArgumentException>(ex);
+            Assert.Contains("uuid", ex!.Message);
+        }
+        finally { File.Delete(file); }
+    }
+
+    // ---- THE GRID ANCHOR (--start-epoch, owner ruling 2026-11-17 after the ----
+    // ---- official referee failed at 1,998.5/s: the deadline grid anchored  ----
+    // ---- at each device's CONNECT (~0.45 s late), so the fleet published  ----
+    // ---- 905/1,200,000 short of the profile — the harness undershooting,  ----
+    // ---- the pipeline 100.0000%. The anchor makes the fleet publish the   ----
+    // ---- profile EXACTLY; the catch-up burst clears the connect ramp.     ----
+
+    [Fact]
+    public void parse_reads_the_start_epoch_and_defaults_to_null()
+    {
+        var anchored = SimulatorOptions.Parse([
+            "--device", Device, "--token", Token, "--tenant", Tenant,
+            "--channel", "temperature=5.0", "--start-epoch", "1764000000.5",
+        ]);
+        Assert.Equal(1_764_000_000.5, anchored.StartEpoch);
+
+        var plain = SimulatorOptions.Parse([
+            "--device", Device, "--token", Token, "--tenant", Tenant,
+            "--channel", "temperature=5.0",
+        ]);
+        Assert.Null(plain.StartEpoch);       // no anchor → the grid starts at connect (single-device law)
+    }
+
+    [Fact]
+    public void parse_refuses_a_non_numeric_start_epoch()
+    {
+        var ex = Record.Exception(() => SimulatorOptions.Parse([
+            "--device", Device, "--token", Token, "--tenant", Tenant,
+            "--channel", "temperature=5.0", "--start-epoch", "now",
+        ]));
+
+        Assert.IsType<ArgumentException>(ex);
+        Assert.Contains("--start-epoch", ex!.Message);
+    }
 }
