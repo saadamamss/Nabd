@@ -7,14 +7,14 @@
 **What happened 2026-11-17 evening (after spec 01 closed): the WHOLE P4 phase was drafted into field manuals (RULES §8, one pass, 11 files) — owner review pending. Skills + RULES were re-loaded first (owner demanded it); main-direct push was refused by the owner (standing law: EVERYTHING rides a ferry, even docs/memory).**
 
 1. **Ferry PR #36 merged** (`d25550d`): memory + 2 docs commits (perf-page closure pointer, LinkedIn story `docs/stories/2026-11-17-the-14-7x-gap.md` — owner-reviewed before publishing, his call).
-2. **P4 spec set drafted** (`phases/P4/`): 00 overview (DoD meter + decisions D1–D4) · 02 rules schema+CRUD+seeding (0021, FR-30/FR-15) · 03 threshold engine (plan/06 §3 verbatim, transition-only persistence) · 04 alert lifecycle (0022, dedup key `(tenant,asset,rule)`) · 05 severity+mute (offline never muted) · 06 offline watchdog (FR-31) · 07 email (0023, encrypted SMTP, acceptance #2 ≤60s leg) · 08 Telegram (FR-38 one-time code) · 09 reconciliation watchdog (HOME = P4, decision D2) · 10 warmup-demo + automated E2E #2/#3 · 11 gate G-P4. Spec 01 = CLOSED (batching).
+2. **P4 spec set drafted** (`phases/P4/`), then RENUMBERED on the owner's challenge (the "watchdog first" recommendation had drifted silently): 00 overview (DoD meter + decisions D1-D4) · **02 reconciliation watchdog (FIRST — only prerequisite is spec 01's FlushCounters; guards every slice after it)** · 03 rules schema+CRUD+seeding (0021, FR-30/FR-15) · 04 threshold engine (plan/06 §3 verbatim, transition-only persistence) · 05 alert lifecycle (0022, dedup key `(tenant,asset,rule)`) · 06 severity+mute (offline never muted) · 07 offline watchdog (FR-31) · 08 email (0023, encrypted SMTP, acceptance #2 <=60s leg) · 09 Telegram (FR-38 one-time code) · 10 warmup-demo + automated E2E #2/#3 · 11 gate G-P4. Spec 01 = CLOSED (batching).
 3. **"Dash ≤5s" honestly scoped at P4** = alert row + Realtime hub event; visual dashboard is P5 (recorded in 00-overview so nobody claims unbuilt UI).
 4. **phases/README P4 row** updated to "specs drafted — owner review pending". NOTES row logged.
 
 **First actions next session:**
 1. **Owner reviews the spec set** (architect law — no slice executes before his blessing; decisions D1–D4 in 00-overview are his to veto: rules REST shape, watchdog home=P4, fan-out channels, no-MediatR bus).
 2. On blessing: spec 02 opens → full production code into `study/implementation-code.md` (RULES §9.1 — the file is REPLACED with the active spec only) + agent test net failing-first (0021 RLS walls, CRUD ladder, seeding idempotency).
-3. Slice order fixed by dependencies: 02 → 03 → 04 → 05 → 06 → 07 → 08 → 09 → 10 → 11.
+3. Slice order (post-renumber): **02 guard first** → 03 → 04 → 05 → 06 → 07 → 08 → 09 → 10 → 11.
 
 **What NOT to do:** execute any P4 spec before owner review; never push main direct (owner refused — law since 2026-11-17); never tick DoD boxes without the owner's hand (delegations must be recorded in the box itself); never generate long-form Arabic in specs/docs (RULES §2.7 — Arabic lives in the study file per §9.1 and existing NOTES convention); no quizzes in chat (RULES §9).
 
