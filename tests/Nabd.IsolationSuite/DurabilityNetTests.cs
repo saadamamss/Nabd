@@ -41,20 +41,25 @@ public sealed class DurabilityNetTests(PostgresFixture pg) : IClassFixture<Postg
         Assert.Equal(1, snap[IngestionErrors.DLQ_INVALID]);
     }
 
-    // ---- fact 2: a malformed-but-authenticated batch lands RAW, never silent ---
+    // ---- fact 2: a malformed-but-authenticated batch lands RAW, never silent;
+    // ---- and an ACCEPTED batch that cannot store fails LOUD (transient abort,
+    // ---- zero acks) — the ack law through the pump, not a thrown sink ----------
 
     [Fact]
     public async Task a_malformed_but_authenticated_mqtt_batch_lands_in_raw_rejects_with_its_raw_bytes()
     {
-        var (device, _) = await SeedDeviceAsync();
+        var (device, tenant) = await SeedDeviceAsync();
         var rawRejects = new RawRejectsStore(new TelemetryStoreDb());
-        var readings = new ThrowingReadingsStore();   // an accepted batch NEVER happens here
-        var (sink, tracker) = SinkWithRealRawStore(rawRejects, readings);
+        var readings = new ThrowingReadingsStore();   // the store NEVER answers in this fact
+        var (buffer, pump, acks, tracker) = PumpWithRealRawStore(
+            rawRejects, readings,
+            rows: new DeviceCatalogRow(device, tenant, Keys("temp")));
 
-        // The device is AUTHENTICATED (its identity resolved — the pipeline's
-        // edges answered), then the parse fails: the DLQ_INVALID-class shape.
+        // The device is AUTHENTICATED (its identity resolved — the resolver's
+        // answer), then the parse fails: the DLQ_INVALID-class shape.
         var received = DateTimeOffset.UtcNow;
-        await sink.AcceptAsync(new IngestEnvelope(device, $"t/x/dev/{device}/v1", Raw, received));
+        buffer.Offer(new IngestEnvelope(device, $"t/x/dev/{device}/v1", Raw, received), acks.Ack);
+        Assert.Equal(FlushOutcome.Completed, await pump.FlushOnceAsync(CancellationToken.None));
 
         await using var conn = await pg.Owner.OpenConnectionAsync();
         await using var cmd = new NpgsqlCommand("""
@@ -71,8 +76,14 @@ public sealed class DurabilityNetTests(PostgresFixture pg) : IClassFixture<Postg
         Assert.False(await r.ReadAsync());
 
         Assert.Empty(tracker.Marks);                             // presence untouched, same law
-        await Assert.ThrowsAnyAsync<InvalidOperationException>(   // an accepted batch would fail loud
-            () => sink.AcceptAsync(Envelope(device, Payload("2026-11-14T12:00:00Z", 1, (22.5, "temp")))));
+        Assert.Equal(1, acks.Count);                             // the reject was receipted AND acked
+
+        // an ACCEPTED batch that cannot store fails LOUD: abort-all, zero NEW
+        // acks, the snapshot re-queued (R10) — the loud half of the old sink law
+        buffer.Offer(Envelope(device, Payload("2026-11-14T12:00:00Z", 1, (22.5, "temp"))), acks.Ack);
+        Assert.Equal(FlushOutcome.TransientAbort, await pump.FlushOnceAsync(CancellationToken.None));
+        Assert.Equal(1, acks.Count);                             // ZERO NEW acks — nothing was committed
+        Assert.Equal(1, buffer.AcceptedCount);                   // back at the tail
     }
 
     // ---- fact 3: forensics OUTLIVE the credential ------------------------------
@@ -82,9 +93,12 @@ public sealed class DurabilityNetTests(PostgresFixture pg) : IClassFixture<Postg
     {
         var (device, tenant) = await SeedDeviceAsync();
         var rawRejects = new RawRejectsStore(new TelemetryStoreDb());
-        var (sink, _) = SinkWithRealRawStore(rawRejects, new ThrowingReadingsStore());
+        var (buffer, pump, acks, _) = PumpWithRealRawStore(
+            rawRejects, new ThrowingReadingsStore(),
+            rows: new DeviceCatalogRow(device, tenant, Keys("temp")));
 
-        await sink.AcceptAsync(new IngestEnvelope(device, "t/x/dev/y/v1", Raw, DateTimeOffset.UtcNow));
+        buffer.Offer(new IngestEnvelope(device, "t/x/dev/y/v1", Raw, DateTimeOffset.UtcNow), acks.Ack);
+        Assert.Equal(FlushOutcome.Completed, await pump.FlushOnceAsync(CancellationToken.None));
 
         // revoke THROUGH THE REAL lifecycle (app lane): the credential dies —
         // the forensics must NOT (no cascade, no cleanup on the reject path).
@@ -113,14 +127,22 @@ public sealed class DurabilityNetTests(PostgresFixture pg) : IClassFixture<Postg
 
     // ---- helpers ----------------------------------------------------------------
 
-    private (PipelineIngestionSink Sink, RecordingTracker Tracker) SinkWithRealRawStore(
-        IRawRejectStore rawRejects, IReadingsStore readings)
+    /// <summary>The pump with its REAL receipt destination (the fact's seam):
+    /// real RawRejectsStore over the real DB; everything else in-memory fakes.</summary>
+    private static (FlushBuffer Buffer, FlushPump Pump, AckRecorder Acks, RecordingTracker Tracker)
+        PumpWithRealRawStore(IRawRejectStore rawRejects, IReadingsStore readings, params DeviceCatalogRow[] rows)
     {
+        var options = new FlushOptions(FlushSize: 10, FlushIntervalMs: 60_000);
+        var buffer = new FlushBuffer(options.FlushSize);
+        var acks = new AckRecorder();
         var tracker = new RecordingTracker();
-        return (new PipelineIngestionSink(
-                    new ValidationPipeline(new FakeChannels(Keys("temp")), new FakeIdentity()),
-                    readings, tracker, rawRejects, new RejectionCounters(),
-                    NullLogger<PipelineIngestionSink>.Instance), tracker);
+        var pump = new FlushPump(
+            buffer, options, new FakeResolver(rows),
+            new ValidationPipeline(new StubChannels(), new StubIdentity()),
+            readings, rawRejects, tracker,
+            new RejectionCounters(), new FlushCounters(),
+            NullLogger<FlushPump>.Instance);
+        return (buffer, pump, acks, tracker);
     }
 
     private async Task<(Guid Device, Guid Tenant)> SeedDeviceAsync()
@@ -160,6 +182,10 @@ public sealed class DurabilityNetTests(PostgresFixture pg) : IClassFixture<Postg
     {
         public Task StoreBatchAsync(ReadingBatchDto batch, CancellationToken ct = default) =>
             throw new InvalidOperationException("the accept path must NOT run in a rejection fact");
+
+        public Task StoreFlushAsync(IReadOnlyList<FlushReadingDto> readings, CancellationToken ct = default) =>
+            throw new InvalidOperationException("the accept path must NOT run in a rejection fact");
+            
         public Task<IReadOnlyList<ReadingValueDto>> GetHistoryAsync(HistoryQuery query, CancellationToken ct = default) =>
             Task.FromResult<IReadOnlyList<ReadingValueDto>>([]);
     }
@@ -174,15 +200,45 @@ public sealed class DurabilityNetTests(PostgresFixture pg) : IClassFixture<Postg
         }
     }
 
-    private sealed class FakeChannels(IReadOnlySet<string> keys) : IDeviceChannels
+    private sealed class AckRecorder
     {
-        public Task<IReadOnlySet<string>?> GetChannelKeysAsync(Guid deviceId, CancellationToken ct = default) => Task.FromResult<IReadOnlySet<string>?>(keys);
+        private readonly object _lock = new();
+        private int _count;
+        public int Count { get { lock (_lock) return _count; } }
+        public Task Ack(CancellationToken ct)
+        {
+            lock (_lock) _count++;
+            return Task.CompletedTask;
+        }
+    }
+
+    /// <summary>The set resolver's answer: ONLY the given rows come back —
+    /// everything else is ABSENT (0020's uniform law).</summary>
+    private sealed class FakeResolver(params DeviceCatalogRow[] rows) : IIngestionSetResolver
+    {
+        private readonly Dictionary<Guid, DeviceCatalogRow> _rows = rows.ToDictionary(r => r.DeviceId);
+        public Task<IReadOnlyDictionary<Guid, DeviceCatalogRow>> ResolveDevicesAsync(
+            IEnumerable<Guid> deviceIds, CancellationToken ct = default)
+        {
+            var answer = new Dictionary<Guid, DeviceCatalogRow>();
+            foreach (var id in deviceIds)
+                if (_rows.TryGetValue(id, out var row)) answer[id] = row;
+            return Task.FromResult<IReadOnlyDictionary<Guid, DeviceCatalogRow>>(answer);
+        }
+    }
+
+    // The pump's direct core never consults these — stubs satisfy the ctor only.
+    private sealed class StubChannels : IDeviceChannels
+    {
+        public Task<IReadOnlySet<string>?> GetChannelKeysAsync(Guid deviceId, CancellationToken ct = default)
+            => Task.FromResult<IReadOnlySet<string>?>(null);
+    }
+
+    private sealed class StubIdentity : IIngestionIdentity
+    {
+        public Task<Guid?> ResolveTenantIdAsync(Guid deviceId, CancellationToken ct = default)
+            => Task.FromResult<Guid?>(null);
     }
 
     private static IReadOnlySet<string> Keys(params string[] k) => new HashSet<string>(k);
-
-    private sealed class FakeIdentity : IIngestionIdentity
-    {
-        public Task<Guid?> ResolveTenantIdAsync(Guid deviceId, CancellationToken ct = default) => Task.FromResult<Guid?>(Guid.NewGuid());
-    }
 }

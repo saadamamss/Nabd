@@ -20,6 +20,17 @@ public interface IReadingsStore
     Task StoreBatchAsync(ReadingBatchDto batch, CancellationToken ct = default);
 
     Task<IReadOnlyList<ReadingValueDto>> GetHistoryAsync(HistoryQuery query, CancellationToken ct = default);
+    
+    /// <summary>
+    /// The flush path's store port (P4 spec 01, Move C): ONE multi-row INSERT
+    /// per chunk across ALL devices and tenants of a flush (parallel unnest
+    /// arrays — 0003's identity key is conflict-safe cross-tenant). Idempotent
+    /// by the same law as StoreBatchAsync (DO NOTHING — retries and broker
+    /// redeliveries are free). NEVER throws Npgsql types: driver failures
+    /// surface as StoreFlushException (R10 classification inside);
+    /// OperationCanceledException passes UNWRAPPED.
+    /// </summary>
+    Task StoreFlushAsync(IReadOnlyList<FlushReadingDto> readings, CancellationToken ct = default);
 }
 
 /// <summary>
@@ -56,4 +67,34 @@ public sealed record RawRejectDto(
 public interface IRawRejectStore
 {
     Task StoreAsync(RawRejectDto reject, CancellationToken ct = default);
+}
+
+
+/// <summary>
+/// ONE reading as the flush carries it (P4 spec 01, Move C): tenant and device
+/// ride PER ROW — a flush spans many devices and tenants, and the single
+/// INSERT is cross-tenant by law (R4: tenant_id is a plain column — 0003/0018;
+/// the identity key (device_id, channel_key, time, seq) is conflict-safe).
+/// </summary>
+public sealed record FlushReadingDto(
+    Guid TenantId, Guid DeviceId, string ChannelKey,
+    DateTimeOffset TimeUtc, double Value, long Seq, DateTimeOffset ReceivedAtUtc);
+
+/// <summary>
+/// The ONLY durable-write failure surface the flush path ever sees besides
+/// OperationCanceledException (P4 spec 01, R10): the room wall law says
+/// Ingestion NEVER references Npgsql — so the store classifies the driver's
+/// exception ONCE, here, carrying the SQLSTATE and the R10 verdict: SQLSTATE
+/// class 22 (data exceptions) + 23514 (check violation) are the ONLY
+/// deterministic row-content failures (the poison ladder's world); everything
+/// else — known or unknown — is transient (abort-all, re-buffer, zero acks).
+/// An EMPTY SqlState = a driver/connection failure (no SQLSTATE exists) —
+/// transient by definition. OperationCanceledException is NEVER wrapped
+/// (cooperative shutdown is not a verdict).
+/// </summary>
+public sealed class StoreFlushException(string sqlState, bool isDeterministic, Exception innerException)
+    : Exception($"readings flush failed (SQLSTATE '{sqlState}', deterministic={isDeterministic})", innerException)
+{
+    public string SqlState { get; } = sqlState;
+    public bool IsDeterministic { get; } = isDeterministic;
 }
