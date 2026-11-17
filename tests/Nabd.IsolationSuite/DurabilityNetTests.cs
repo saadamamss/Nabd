@@ -133,7 +133,8 @@ public sealed class DurabilityNetTests(PostgresFixture pg) : IClassFixture<Postg
         PumpWithRealRawStore(IRawRejectStore rawRejects, IReadingsStore readings, params DeviceCatalogRow[] rows)
     {
         var options = new FlushOptions(FlushSize: 10, FlushIntervalMs: 60_000);
-        var buffer = new FlushBuffer(options.FlushSize);
+        var reconcile = new ReconcileCounters();   // P4 spec 02: required by the buffer (fail-shut)
+        var buffer = new FlushBuffer(options.FlushSize, reconcile);
         var acks = new AckRecorder();
         var tracker = new RecordingTracker();
         var pump = new FlushPump(
@@ -141,6 +142,7 @@ public sealed class DurabilityNetTests(PostgresFixture pg) : IClassFixture<Postg
             new ValidationPipeline(new StubChannels(), new StubIdentity()),
             readings, rawRejects, tracker,
             new RejectionCounters(), new FlushCounters(),
+            reconcile,
             NullLogger<FlushPump>.Instance);
         return (buffer, pump, acks, tracker);
     }

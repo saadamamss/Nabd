@@ -39,51 +39,57 @@ public sealed class ProcessingWorker(
         var batchSize = configuration.GetValue("Ingestion:BatchSize", 500);
         IReadingsStore store = new PostgresReadingsStore(telemetryDb, batchSize);
 
-        // R1's flush bounds — fail-shut (FlushOptions.From throws at boot on
-        // nonsense). AMENDED (sharding ruling 2026-11-16): Receive Maximum is
-        // PER CONNECTION (its own knob, default 200) and ConsumerShards sets
-        // how many MQTT connections share the subscription — the AGGREGATE
-        // window is Shards × ReceiveMaximum, and FlushSize is only the flush
-        // trigger's readings bound.
         var flush = FlushOptions.From(
             configuration.GetValue("Ingestion:FlushSize", 200),
             configuration.GetValue("Ingestion:FlushIntervalMs", 100),
             configuration.GetValue("Ingestion:ReceiveMaximum", 200),
             configuration.GetValue("Ingestion:ConsumerShards", 1));
 
-        logger.LogInformation("ProcessingHost up — P4 spec 01 (sharded): the batching lever is wired — {Shards} consumer connection(s) × Receive Maximum {ReceiveMaximum} (aggregate window {Aggregate}), flush trigger {FlushSize} readings.",
+        // P4 spec 02: ONE reconcile ledger shared by the buffer (delivered),
+        // the rejection counters (rejected) and the flush counters (stored) —
+        // the watchdog reads it on its own cadence.
+        var reconcile = new ReconcileCounters();
+
+        logger.LogInformation(
+            "ProcessingHost up — P4 spec 01 (sharded) + spec 02 (reconcile guard): {Shards} connection(s) × RM {ReceiveMaximum} (aggregate {Aggregate}), flush trigger {FlushSize}, reconcile tick 60 s.",
             flush.ConsumerShards, flush.ReceiveMaximum, flush.AggregateWindow, flush.FlushSize);
 
+        var buffer = new FlushBuffer(flush.FlushSize, reconcile);
 
-        var buffer = new FlushBuffer(flush.FlushSize);
-
-        // The TelemetryStore room's ports — the pump's four + the DI-shared tracker.
-        var rawRejects = new RawRejectsStore(telemetryDb);   // 0019: rejections get a destination (spec 06)
-        var counters = new RejectionCounters();              // per-process; the DB copy rides raw_rejects
-        var flushCounters = new FlushCounters();             // the flush path's own observability (Option A's input)
+        var rawRejects = new RawRejectsStore(telemetryDb);
+        var counters = new RejectionCounters(reconcile);
+        var flushCounters = new FlushCounters(reconcile);
         var pump = new FlushPump(
             buffer, flush, edges, pipeline, store, rawRejects, tracker, counters, flushCounters,
+            reconcile,
             loggerFactory.CreateLogger<FlushPump>());
 
-        // The drain-before-disconnect seam (ack-overlap ruling 2026-11-17): the
-        // consumer's graceful stop unsubscribes, DRAINS the pump's in-flight
-        // PUBACK chunks while the connections are still open, then disconnects.
         var consumer = new EmqxIngestConsumer(
             access, buffer, flush, pump, loggerFactory.CreateLogger("Nabd.Ingestion.Consumer"));
+
+        // P4 spec 02: the watchdog's own loop — 60 s ticks, read-only, its own
+        // task. A slow watchdog never touches the ingestion critical path.
+        var watchdog = new ReconcileWatchdog(reconcile, loggerFactory.CreateLogger<ReconcileWatchdog>());
+        var watchdogTask = Task.Run(async () =>
+        {
+            while (!stoppingToken.IsCancellationRequested)
+            {
+                try { await Task.Delay(TimeSpan.FromSeconds(60), stoppingToken); }
+                catch (OperationCanceledException) { break; }
+                watchdog.Tick(buffer.IsQuiet, pump.FlushInFlight);
+            }
+        }, stoppingToken);
 
         var pumpTask = pump.RunAsync(stoppingToken);
         try
         {
-            // Returns after the graceful disconnect (R11: inflow stopped FIRST).
             await consumer.RunAsync(stoppingToken);
         }
         finally
         {
-            // R11: ONE bounded final flush AFTER the inflow stopped — success
-            // acks everything clean; failure/cancellation → zero acks → EMQX
-            // re-queues them (CleanStart=false + 1 h session expiry).
             await pump.FinalFlushAsync(TimeSpan.FromSeconds(5), CancellationToken.None);
         }
         await pumpTask;
+        await watchdogTask;
     }
 }

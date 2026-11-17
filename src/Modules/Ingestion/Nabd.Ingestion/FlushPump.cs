@@ -66,6 +66,7 @@ public sealed class FlushPump(
     IDeviceStatusTracker deviceStatus,
     RejectionCounters counters,
     FlushCounters flushCounters,
+    ReconcileCounters? reconcile,
     ILogger<FlushPump> logger)
 {
     /// <summary>Serializes flush attempts — the timer wake, the size wake, and the final flush never interleave.</summary>
@@ -86,6 +87,11 @@ public sealed class FlushPump(
     private readonly SemaphoreSlim _ackWindow = new(MaxInFlightAckChunks, MaxInFlightAckChunks);
     private readonly object _ackTrack = new();
     private readonly List<Task> _ackTasks = [];          // in-flight chunk tasks (for the shutdown drain)
+    private volatile bool _flushInFlight;
+    private readonly HashSet<PendingDelivery> _accounted = new(ReferenceEqualityComparer.Instance);
+
+    /// <summary>P4 spec 02: true while a flush attempt is between drain and commit — the QUIET law's grace input.</summary>
+    public bool FlushInFlight => _flushInFlight;
 
     public async Task RunAsync(CancellationToken stoppingToken)
     {
@@ -136,6 +142,8 @@ public sealed class FlushPump(
         try { await _gate.WaitAsync(ct); }
         catch (OperationCanceledException) { return FlushOutcome.Cancelled; }
 
+        _accounted.Clear();
+        _flushInFlight = true;
         try
         {
             var rejects = buffer.DrainParseRejects();
@@ -151,6 +159,7 @@ public sealed class FlushPump(
                 // verdict — zero NEW acks happened on this path; drained entries
                 // ride the broker's redelivery (replay idempotent).
                 outcome = FlushOutcome.Cancelled;
+                HandBackDrained(rejects, accepted);
             }
             catch (Exception e)
             {
@@ -159,6 +168,7 @@ public sealed class FlushPump(
                 // logged with the escalation ladder, and the flush ends aborted.
                 // Drained entries ride the broker's redelivery (replay idempotent).
                 outcome = RegisterAbort("flush attempt crashed (unknown exception)", e);
+                HandBackDrained(rejects, accepted);
             }
 
             logger.LogInformation(
@@ -188,6 +198,18 @@ public sealed class FlushPump(
         }
     }
 
+    private void MarkAccounted(PendingDelivery entry) => _accounted.Add(entry);
+
+    private void HandBackDrained(List<PendingDelivery> rejects, List<PendingDelivery> accepted)
+    {
+        if (reconcile is null) return;
+        var units = 0L;
+        foreach (var r in rejects) if (!_accounted.Contains(r)) units += 1;
+        foreach (var a in accepted) if (!_accounted.Contains(a)) units += a.Parsed!.Readings.Count;
+
+        if (units > 0) reconcile.HandedBack((int)units);
+    }
+
     /// <summary>
     /// R11's bounded shutdown drain (~5 s from the worker): drain until the
     /// buffer is empty, the bound expires, or an abort refuses to heal.
@@ -208,6 +230,7 @@ public sealed class FlushPump(
             {
                 logger.LogWarning("final flush BOUND expired with {Accepted} accepted + {Rejected} rejects still buffered — zero acks; the broker re-queues them (session expiry)",
                     buffer.AcceptedCount, buffer.ParseRejectsCount);
+                reconcile?.HandedBack((int)(buffer.BufferedReadings + buffer.ParseRejectsCount));
                 return;
             }
 
@@ -215,11 +238,13 @@ public sealed class FlushPump(
             {
                 logger.LogWarning("final flush cancelled with {Accepted} accepted + {Rejected} rejects still buffered — zero acks; the broker re-queues them (session expiry)",
                     buffer.AcceptedCount, buffer.ParseRejectsCount);
+                reconcile?.HandedBack((int)(buffer.BufferedReadings + buffer.ParseRejectsCount));
                 return;
             }
             if (outcome is FlushOutcome.TransientAbort)
             {
                 logger.LogWarning("final flush hit a transient abort — no retries during shutdown; zero acks remain; the broker re-queues them (session expiry)");
+                reconcile?.HandedBack((int)(buffer.BufferedReadings + buffer.ParseRejectsCount));
                 return;
             }
         }
@@ -302,7 +327,7 @@ public sealed class FlushPump(
                     buffer.RequeueAccepted(work.Select(w => w.Entry).ToList());
                     return RegisterAbort("receipt write failed (transient)", receipt.Error!);
                 }
-                counters.Increment(IngestionErrors.E422_UNKNOWN_CHANNEL);
+                counters.Increment(IngestionErrors.E422_UNKNOWN_CHANNEL, entry.Parsed!.Readings.Count);
                 await AckAsync(entry);
                 continue;
             }
@@ -323,7 +348,7 @@ public sealed class FlushPump(
                     buffer.RequeueAccepted(work.Select(w => w.Entry).ToList());
                     return RegisterAbort("receipt write failed (transient)", receipt.Error!);
                 }
-                counters.Increment(result.Rejected.Code);
+                counters.Increment(result.Rejected.Code, entry.Parsed!.Readings.Count);
                 await AckAsync(entry);
                 continue;
             }
@@ -402,8 +427,8 @@ public sealed class FlushPump(
         // landed-set bookkeeping.
         var flat = new List<(NormalizedReading Row, PumpWork Owner)>(work.Sum(w => w.Rows.Count));
         foreach (var w in work)
-        foreach (var row in w.Rows)
-            flat.Add((row, w));
+            foreach (var row in w.Rows)
+                flat.Add((row, w));
 
         var landed = new HashSet<int>();
         var receipted = new HashSet<PumpWork>();   // poison-receipted messages (finalized)
@@ -608,6 +633,7 @@ public sealed class FlushPump(
 
     private async Task AckAsync(PendingDelivery entry)
     {
+        MarkAccounted(entry);
         try
         {
             await entry.Ack(CancellationToken.None);

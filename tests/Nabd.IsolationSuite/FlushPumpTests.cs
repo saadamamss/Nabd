@@ -230,7 +230,8 @@ public sealed class FlushPumpTests
         BuildPump(IReadingsStore store, FlushOptions? options, ILogger<FlushPump> logger, params DeviceCatalogRow[] rows)
     {
         var o = options ?? new FlushOptions(FlushSize: 10, FlushIntervalMs: 60_000);
-        var buffer = new FlushBuffer(o.FlushSize);
+        var reconcile = new ReconcileCounters();   // P4 spec 02: required by the buffer (fail-shut)
+        var buffer = new FlushBuffer(o.FlushSize, reconcile);
         var acks = new AckRecorder();
         var rawRejects = new FakeRawRejects();
         var tracker = new RecordingTracker();
@@ -241,6 +242,7 @@ public sealed class FlushPumpTests
             buffer, o, resolver,
             new ValidationPipeline(new StubChannels(), new StubIdentity()),
             store, rawRejects, tracker, counters, flushCounters,
+            reconcile,
             logger);
         return (pump, buffer, acks, rawRejects, tracker, counters, flushCounters, resolver);
     }
@@ -864,9 +866,11 @@ public sealed class FlushPumpTests
         // The TelemetryStore room's surfaces can NEVER be constructor-reachable.
         Assert.DoesNotContain(parameters, p => (p.ParameterType.Namespace ?? "").StartsWith("Nabd.TelemetryStore"));
 
-        // The buffer's own wall: its constructor takes ONLY the flush size (an int).
+        // The buffer's own wall (AMENDED P4 spec 02): its constructor takes
+        // ONLY the flush size (an int) + the Ingestion-room reconcile ledger
+        // (required, fail-shut) — still no store/resolution/receipt port.
         var bufferCtor = Assert.Single(typeof(FlushBuffer).GetConstructors());
-        Assert.Equal([typeof(int)], bufferCtor.GetParameters().Select(p => p.ParameterType).ToArray());
+        Assert.Equal([typeof(int), typeof(ReconcileCounters)], bufferCtor.GetParameters().Select(p => p.ParameterType).ToArray());
 
         // And the delivery envelope carries no room types at all (pure data).
         var envelopeCtor = Assert.Single(typeof(IngestEnvelope).GetConstructors());

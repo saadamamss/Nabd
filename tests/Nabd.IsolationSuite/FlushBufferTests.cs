@@ -38,7 +38,7 @@ public sealed class FlushBufferTests
     [Fact]
     public async Task the_size_trigger_counts_readings_not_messages()
     {
-        var buffer = new FlushBuffer(flushSize: 200);
+        var buffer = new FlushBuffer(flushSize: 200, new ReconcileCounters());   // P4 spec 02: the ledger is required (fail-shut)
 
         // 66 messages × 3 readings = 198 readings — NOT crossed yet, with 66
         // messages. A message-counting trigger would have fired long ago.
@@ -61,7 +61,7 @@ public sealed class FlushBufferTests
     [Fact]
     public async Task a_crossing_mid_message_fires_the_trigger_and_overshoot_is_bounded()
     {
-        var buffer = new FlushBuffer(flushSize: 200);
+        var buffer = new FlushBuffer(flushSize: 200, new ReconcileCounters());   // P4 spec 02: the ledger is required (fail-shut)
         for (var seq = 1; seq <= 199; seq++)
             buffer.Offer(Envelope(Payload("2026-11-16T11:59:30.000Z", seq, (1.0, "t"))), NoAck);
         Assert.False(buffer.TakeSizeTrigger().IsCompleted);
@@ -81,7 +81,7 @@ public sealed class FlushBufferTests
     [Fact]
     public void a_parse_rejection_never_enters_the_accepted_stream()
     {
-        var buffer = new FlushBuffer(flushSize: 200);
+        var buffer = new FlushBuffer(flushSize: 200, new ReconcileCounters());   // P4 spec 02: the ledger is required (fail-shut)
         buffer.Offer(Envelope("this is not json"), NoAck);
 
         Assert.Equal(1, buffer.ParseRejectsCount);
@@ -95,7 +95,7 @@ public sealed class FlushBufferTests
     [Fact]
     public void content_validation_is_not_the_buffers_job()
     {
-        var buffer = new FlushBuffer(flushSize: 200);
+        var buffer = new FlushBuffer(flushSize: 200, new ReconcileCounters());   // P4 spec 02: the ledger is required (fail-shut)
 
         // "pressure" is in no device's template — but the SHAPE is lawful.
         // The buffer accepts-parse; the E422 verdict happens at the flush
@@ -115,7 +115,7 @@ public sealed class FlushBufferTests
     [Fact]
     public void a_transient_abort_requeues_everything_untouched()
     {
-        var buffer = new FlushBuffer(flushSize: 200);
+        var buffer = new FlushBuffer(flushSize: 200, new ReconcileCounters());   // P4 spec 02: the ledger is required (fail-shut)
         buffer.Offer(Envelope(Payload("2026-11-16T11:59:30.000Z", 1, (1.0, "t"), (2.0, "t"))), NoAck);
 
         var drained = buffer.DrainAccepted();
@@ -139,7 +139,7 @@ public sealed class FlushBufferTests
     [Fact]
     public void pending_lowers_only_on_acks()
     {
-        var buffer = new FlushBuffer(flushSize: 200);
+        var buffer = new FlushBuffer(flushSize: 200, new ReconcileCounters());   // P4 spec 02: the ledger is required (fail-shut)
         buffer.Offer(Envelope(Payload("2026-11-16T11:59:30.000Z", 1, (1.0, "t"))), NoAck);
         buffer.Offer(Envelope(Payload("2026-11-16T11:59:30.000Z", 2, (1.0, "t"))), NoAck);
         Assert.Equal(2, buffer.PendingMessages);
