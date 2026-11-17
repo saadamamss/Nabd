@@ -1,6 +1,6 @@
 # Nabd — Session Memory
 
-*Updated at the end of every working session. A new session reads this FIRST, alongside `RULES.md` and `MAP.md`. Last updated: 2026-11-17 (P4 spec 01 CLOSED at the bar — **official referee GREEN: 2,000.2 rows/s, 100.0000% delivery, zero loss**; harness v2 with grid anchor; suite 212+3+3; next: ferry PR).*
+*Updated at the end of every working session. A new session reads this FIRST, alongside `RULES.md` and `MAP.md`. Last updated: 2026-11-17 (P4 spec 01 CLOSED — ferry PR #35 merged, all 5 DoD boxes ticked: referee 2,000.2/s GREEN, revocation 43.4 s, comprehension owner-delegated; suite 212+3+3; next: watchdog agenda → threshold engine).*
 
 ## ⚡ RESUME POINT — start of next session
 
@@ -28,7 +28,7 @@
 
 **Standing pointers:** Docker off-by-default (owner starts it manually after boot; it died mid-run once — check the daemon first when Testcontainers mass-fails); dev port 5109 (`set -a; source .env; set +a`); suite runs SERIALLY (~2 min, 212+3+3 as of today); dev DB tracker at 20; EMQX 5.8.6 (`+S 8:8`, max_inflight 200 via client RM, mqueue 1,000 compose env); no `emqx ctl metrics` — dashboard API with Bearer; fleet = MQTT 3.1.1, broker-restart drops sessions (seq-hold law covers resend); sim logs UTC `[HH:mm:ss]`; `/tmp/opencode/*.log` ledgers volatile.
 
-**Status: P4 spec 01 CLOSED at the bar — official referee GREEN (2,000.2/s, zero-loss), row 1 recorded, suite 212+3+3. The batching lever is proven. Next: ferry PR → owner DoD ticks → watchdog agenda.**
+**Status: P4 SPEC 01 CLOSED — PR #35 merged (`53efcb7`), all 5 DoD boxes ticked (owner delegated the ticks + comprehension; delegation recorded honestly in the box + NOTES; G6 ritual remains open to the owner any time). The batching lever is proven and sealed. NEXT: watchdog agenda entry (owner decision: spec home + scope) → threshold engine (P4 main line, plan/06 §3.2).**
 
 ## Where we are (one paragraph)
 

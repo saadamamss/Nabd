@@ -1,5 +1,10 @@
 # P3 Spec 09 — First Sustained Load Run (plan/09 §4.1 → §9/H row 1)
 
+> **CLOSED 2026-11-17 — the 14.7× gap this page's row 1 nominated was CLOSED by P4 spec 01:**
+> official referee **GREEN — 2,000.2 rows/s × 600 s, 100.0000% delivery, zero loss** (dup 0, rejects 0, drops 0, deny ledger `0 0`, p99 30 ms).
+> The lever chain, the pidstat forensics, and both official runs (run 1 NOT-MET at 1,998.5/s — the harness undershooting its own profile, fixed by the `--start-epoch` grid anchor): **`docs/perf/2026-11-17-p4-sustained/README.md`**.
+> plan/09 §9/H row 1 UPDATED.
+
 **Date:** 2026-11-15 · **Executed by:** agent, on the owner's recorded delegation
 **Environment (ruling A):** `env: dev-laptop (11 GB RAM, containers capped: postgres 1 GiB, emqx 1 GiB)`
 **Scenario:** Sustained — 100 devices × 20/s + 20 devices × 1/s (target 2,000 readings/s), 600 s, NO rider (row 1 pure; the duplicate-flood rider is row 6, a separate scaled run).
