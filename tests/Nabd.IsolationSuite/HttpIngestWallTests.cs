@@ -428,6 +428,9 @@ public sealed class HttpIngestWallTests : IClassFixture<PostgresFixture>
     private sealed class BlockingStore(Task until) : IReadingsStore
     {
         public async Task StoreBatchAsync(ReadingBatchDto batch, CancellationToken ct = default) => await until;
+
+        public async Task StoreFlushAsync(IReadOnlyList<FlushReadingDto> readings, CancellationToken ct = default) => await until;
+
         public Task<IReadOnlyList<ReadingValueDto>> GetHistoryAsync(HistoryQuery query, CancellationToken ct = default) => Task.FromResult<IReadOnlyList<ReadingValueDto>>([]);
     }
 

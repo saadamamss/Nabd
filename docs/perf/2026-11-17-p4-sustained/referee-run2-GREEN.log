@@ -1,0 +1,30 @@
+PH pid=88165 rss_start=60620 kB
+consumer shards subscribed: 4/4 — fleet may fly
+authz door probe   : allow
+fleet up: 12 processes × 10 devices = 119 devices for 600s (slow group dup=1, broker 172.18.0.2:1883, grid anchored at epoch 1794873931.910811868)
+fleet stopped
+
+=== stored + dup + latency (window 2026-11-17T02:05:31+02:00 → 2026-11-17T02:15:31+02:00) ===
+
+=== raw_rejects + rejection counters ===
+
+=== RESULT — Sustained run ===
+window            : 2026-11-17T02:05:31+02:00 → 2026-11-17T02:15:31+02:00 (600 s)
+published copies  : 1200097   (PUBACKed ledger lines; slow group dup included)
+published unique  : 1200097
+stored            : 1198218
+dup rows          : 0   (count(*) - count(DISTINCT id-key) = 0 expected)
+lost unique       : 1879
+rows/s stored     : 1997
+latency p50/p95/p99 (s): 0.009998 / 0.024731 / 0.030311
+raw_rejects rows  : 0
+health/ready      : {"status":"degraded","note":"P0 skeleton — readiness checks (db/queue/broker) arrive with the compose services (08 §6)","version":"0.1.0-p0","rejected":{}}
+drain tail         : 1901 rows in [END, END+31) (stragglers, bounded by the aggregate window)
+stored total       : 1200119 (window 1198218 + tail 1901)
+sustained rate     : 2000.2 rows/s ((window+tail)/flight, flight = 600 s)
+sustained bar      : MET (2000.2 ≥ 2,000 rows/s) — pending the deny-ledger check below
+PH rss end          : 96324 kB (start 60620 kB)
+EMQX consumer       : delivered_msgs=300033 dropped_msgs=0 delivered_msgs=300035 dropped_msgs=0 delivered_msgs=300023 dropped_msgs=0 delivered_msgs=300028 dropped_msgs=0 
+EMQX deny ledger    : publish.auth_error=0 authorization.deny=0
+OFFICIAL RUN DONE   : window 2026-11-17T02:05:31+02:00 → 2026-11-17T02:15:31+02:00
+OFFICIAL RUN 2 ended: 2026-11-17T00:17:57Z exit=0

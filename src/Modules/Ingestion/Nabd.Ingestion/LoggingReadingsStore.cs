@@ -19,7 +19,12 @@ public sealed class LoggingReadingsStore(ILogger<LoggingReadingsStore> logger) :
             batch.DeviceId, batch.TenantId, batch.Readings.Count);
         return Task.CompletedTask;
     }
-
+    public Task StoreFlushAsync(IReadOnlyList<FlushReadingDto> readings, CancellationToken ct = default)
+    {
+        logger.LogInformation("store PLACEHOLDER (the pump replaces this) flush rows={Count}", readings.Count);
+        return Task.CompletedTask;
+    }
+    
     public Task<IReadOnlyList<ReadingValueDto>> GetHistoryAsync(HistoryQuery query, CancellationToken ct = default)
         => Task.FromResult<IReadOnlyList<ReadingValueDto>>([]);
 }

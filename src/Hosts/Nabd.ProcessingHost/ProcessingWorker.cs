@@ -11,9 +11,13 @@ using Nabd.TelemetryStore.Contracts;
 
 /// <summary>
 /// Processing Host worker (03 §5): the composition root's long-running loop.
-/// P3 spec 04: the REAL batch store is wired — LoggingReadingsStore is retired.
-/// The placeholder was replaced at THIS wiring line only; the pipeline, sink
-/// and tests never changed (the seam held).
+/// P4 spec 01: the batching lever is wired — the O(1) consumer feeds the
+/// FlushBuffer, the FlushPump owns every durable outcome (ONE resolution per
+/// flush, one multi-row INSERT per flush, the ack law, the R6/R10 ladder,
+/// Option A escalation), and the R11 shutdown order is orchestrated here
+/// (amended 2026-11-17, ack overlap): consumer stops (unsubscribe → drain
+/// in-flight PUBACK chunks → disconnect) THEN one bounded final flush, which
+/// drains any ack still in flight again.
 /// </summary>
 public sealed class ProcessingWorker(
     IConfiguration configuration,
@@ -24,8 +28,6 @@ public sealed class ProcessingWorker(
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        logger.LogInformation("ProcessingHost up — P3 spec 04: the real batch store is wired.");
-
         // Fail-shut chain: ConsumerAccess throws at boot without its env (NFR-08).
         var access = new ConsumerAccess();
 
@@ -34,21 +36,54 @@ public sealed class ProcessingWorker(
 
         var pipeline = new ValidationPipeline(edges, edges);
 
-        // The tracker + DB door come from DI (Program.cs) — ONE shared instance,
-        // the same buffer the flush worker drains on its cadence.
         var batchSize = configuration.GetValue("Ingestion:BatchSize", 500);
         IReadingsStore store = new PostgresReadingsStore(telemetryDb, batchSize);
 
-        // The TelemetryStore room's ports — the sink's four + the DI-shared tracker.
+        // R1's flush bounds — fail-shut (FlushOptions.From throws at boot on
+        // nonsense). AMENDED (sharding ruling 2026-11-16): Receive Maximum is
+        // PER CONNECTION (its own knob, default 200) and ConsumerShards sets
+        // how many MQTT connections share the subscription — the AGGREGATE
+        // window is Shards × ReceiveMaximum, and FlushSize is only the flush
+        // trigger's readings bound.
+        var flush = FlushOptions.From(
+            configuration.GetValue("Ingestion:FlushSize", 200),
+            configuration.GetValue("Ingestion:FlushIntervalMs", 100),
+            configuration.GetValue("Ingestion:ReceiveMaximum", 200),
+            configuration.GetValue("Ingestion:ConsumerShards", 1));
+
+        logger.LogInformation("ProcessingHost up — P4 spec 01 (sharded): the batching lever is wired — {Shards} consumer connection(s) × Receive Maximum {ReceiveMaximum} (aggregate window {Aggregate}), flush trigger {FlushSize} readings.",
+            flush.ConsumerShards, flush.ReceiveMaximum, flush.AggregateWindow, flush.FlushSize);
+
+
+        var buffer = new FlushBuffer(flush.FlushSize);
+
+        // The TelemetryStore room's ports — the pump's four + the DI-shared tracker.
         var rawRejects = new RawRejectsStore(telemetryDb);   // 0019: rejections get a destination (spec 06)
         var counters = new RejectionCounters();              // per-process; the DB copy rides raw_rejects
-        IIngestionSink sink = new PipelineIngestionSink(
-            pipeline, store, tracker, rawRejects, counters,
-            loggerFactory.CreateLogger<PipelineIngestionSink>());
+        var flushCounters = new FlushCounters();             // the flush path's own observability (Option A's input)
+        var pump = new FlushPump(
+            buffer, flush, edges, pipeline, store, rawRejects, tracker, counters, flushCounters,
+            loggerFactory.CreateLogger<FlushPump>());
 
+        // The drain-before-disconnect seam (ack-overlap ruling 2026-11-17): the
+        // consumer's graceful stop unsubscribes, DRAINS the pump's in-flight
+        // PUBACK chunks while the connections are still open, then disconnects.
         var consumer = new EmqxIngestConsumer(
-            access, sink, loggerFactory.CreateLogger("Nabd.Ingestion.Consumer"));
+            access, buffer, flush, pump, loggerFactory.CreateLogger("Nabd.Ingestion.Consumer"));
 
-        await consumer.RunAsync(stoppingToken);
+        var pumpTask = pump.RunAsync(stoppingToken);
+        try
+        {
+            // Returns after the graceful disconnect (R11: inflow stopped FIRST).
+            await consumer.RunAsync(stoppingToken);
+        }
+        finally
+        {
+            // R11: ONE bounded final flush AFTER the inflow stopped — success
+            // acks everything clean; failure/cancellation → zero acks → EMQX
+            // re-queues them (CleanStart=false + 1 h session expiry).
+            await pump.FinalFlushAsync(TimeSpan.FromSeconds(5), CancellationToken.None);
+        }
+        await pumpTask;
     }
 }

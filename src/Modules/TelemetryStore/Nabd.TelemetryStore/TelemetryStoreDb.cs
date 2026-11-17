@@ -29,6 +29,13 @@ public sealed class TelemetryStoreDb : IDisposable
         _dataSource = builder.Build();
     }
 
+    /// <summary>
+    /// Test seam: the suite's store spy builds a data source with a counting
+    /// logger factory, and the transient-failure test builds one on a dead
+    /// port. The env-ctor above stays the ONLY production path.
+    /// </summary>
+    public TelemetryStoreDb(NpgsqlDataSource dataSource) => _dataSource = dataSource;
+
     public async Task<NpgsqlConnection> OpenConnectionAsync(CancellationToken ct = default)
     {
         var conn = await _dataSource.OpenConnectionAsync(ct);

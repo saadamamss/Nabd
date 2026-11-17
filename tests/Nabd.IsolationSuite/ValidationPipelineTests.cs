@@ -185,4 +185,60 @@ public sealed class ValidationPipelineTests
         Assert.False(result.IsAccepted);
         Assert.True(result.Rejected!.Code is IngestionErrors.E422_UNKNOWN_CHANNEL, $"{result.Rejected.Code}");
     }
+
+    // ---- P4 step 4: the extracted core answers the SAME verdicts, edge-free ----
+
+    [Fact]
+    public void the_extracted_core_answers_the_same_verdicts_without_the_edges()
+    {
+        var pipe = Pipeline("temp", "hum");
+        var keys = new HashSet<string> { "temp", "hum" };
+
+        // the happy path's world, via the core DIRECTLY — the edges are never
+        // consulted (the pump passes 0020's answer; identity already resolved)
+        var ok = pipe.ValidateResolved(
+            Envelope(Payload("2026-11-13T11:59:30.000Z", 42, (22.5, "temp"), (61.0, "hum"))), Tenant, keys);
+        Assert.True(ok.IsAccepted, $"expected accept, got {ok.Rejected?.Code}: {ok.Rejected?.Detail}");
+        Assert.Equal(2, ok.Accepted!.Count);
+        Assert.Equal(Tenant, ok.Accepted[0].TenantId);
+        Assert.Equal(Device, ok.Accepted[0].DeviceId);
+
+        // unknown channel → the SAME code RunAsync gives (byte-identical verdicts)
+        var bad = pipe.ValidateResolved(
+            Envelope(Payload("2026-11-13T11:59:30.000Z", 1, (1.0, "pressure"))), Tenant, keys);
+        Assert.False(bad.IsAccepted);
+        Assert.Equal(IngestionErrors.E422_UNKNOWN_CHANNEL, bad.Rejected!.Code);
+
+        // unparseable → DLQ_INVALID from the core's stage 3, edge-free
+        var junk = pipe.ValidateResolved(Envelope("this is not json"), Tenant, keys);
+        Assert.False(junk.IsAccepted);
+        Assert.Equal(IngestionErrors.DLQ_INVALID, junk.Rejected!.Code);
+
+        // non-finite (1e400 → ±Infinity) → E422_RANGE, edge-free
+        var huge = pipe.ValidateResolved(
+            Envelope("""{"v":1,"ts":"2026-11-13T11:59:30.000Z","seq":1,"rr":[{"t":1e400,"c":"temp"}]}"""), Tenant, keys);
+        Assert.False(huge.IsAccepted);
+        Assert.Equal(IngestionErrors.E422_RANGE, huge.Rejected!.Code);
+    }
+
+    [Fact]
+    public void the_extracted_core_clamps_the_future_and_flags_the_stale()
+    {
+        var pipe = Pipeline("temp");
+        var keys = new HashSet<string> { "temp" };
+
+        // 6 min future → clamped to ReceivedAt (the SAME boundary fact RunAsync pins)
+        var future = pipe.ValidateResolved(
+            Envelope(Payload("2026-11-13T12:10:00.000Z", 1, (1.0, "temp"))), Tenant, keys);
+        Assert.True(future.IsAccepted);
+        Assert.Equal(ReceivedAt, future.Accepted![0].TimeUtc);
+        Assert.Contains(IngestionErrors.E422_TS, future.Warnings);
+
+        // 31 days stale → accepted-and-flagged, the honest event time kept
+        var stale = pipe.ValidateResolved(
+            Envelope(Payload("2026-10-13T12:00:00.000Z", 2, (1.0, "temp"))), Tenant, keys);
+        Assert.True(stale.IsAccepted);
+        Assert.Equal(new DateTimeOffset(2026, 10, 13, 12, 0, 0, TimeSpan.Zero), stale.Accepted![0].TimeUtc);
+        Assert.Contains(IngestionErrors.E422_TS, stale.Warnings);
+    }
 }

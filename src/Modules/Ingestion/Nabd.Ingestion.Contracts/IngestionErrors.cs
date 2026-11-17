@@ -30,4 +30,14 @@ public static class IngestionErrors
 
     /// <summary>Consumer: structurally unparseable/unsanely-shaped batch. Raw-reject with reason (spec 06) — never silently dropped.</summary>
     public const string DLQ_INVALID = "DLQ_INVALID";
+
+    /// <summary>
+    /// Consumer, P4 spec 01 (R6/R10): a row the poison ladder could NOT land even
+    /// row-by-row — a deterministic, row-content failure (SQLSTATE class 22/23514)
+    /// that would fail identically on every retry. The message gets THIS receipt in
+    /// telemetry.raw_rejects (raw bytes verbatim — forensics for the owner) and IS
+    /// acked: stored-or-receipted, never looped. Transient failures NEVER take this
+    /// path (R10: they abort-all and re-queue — an unknown error is never a receipt).
+    /// </summary>
+    public const string DLQ_STORE_POISON = "DLQ_STORE_POISON";
 }
