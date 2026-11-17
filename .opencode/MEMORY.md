@@ -1,34 +1,26 @@
 # Nabd — Session Memory
 
-*Updated at the end of every working session. A new session reads this FIRST, alongside `RULES.md` and `MAP.md`. Last updated: 2026-11-17 (P4 spec 01 CLOSED — ferry PR #35 merged, all 5 DoD boxes ticked: referee 2,000.2/s GREEN, revocation 43.4 s, comprehension owner-delegated; suite 212+3+3; next: watchdog agenda → threshold engine).*
+*Updated at the end of every working session. A new session reads this FIRST, alongside `RULES.md` and `MAP.md`. Last updated: 2026-11-17 evening (P4 specs 00–11 DRAFTED in one pass — owner review pending; spec 01 CLOSED with PR #36 ferry; rules/skills refreshed this session).*
 
 ## ⚡ RESUME POINT — start of next session
 
-**What happened 2026-11-17 (P4 spec 01 final day): the 14.7× gap CLOSED. Official referee run 2 = GREEN: sustained 2,000.2 rows/s (bar ≥ 2,000), stored 1,200,119 == delivered 1,200,119 (100.0000% delivery, zero loss, zero dup, zero drops, zero kills, deny ledger `0 0`, p50 10 ms / p99 30 ms), and row 1 is RECORDED in plan/09 §9/H. The whole NFR-01 verdict is earned, measured, and honest.**
+**What happened 2026-11-17 evening (after spec 01 closed): the WHOLE P4 phase was drafted into field manuals (RULES §8, one pass, 11 files) — owner review pending. Skills + RULES were re-loaded first (owner demanded it); main-direct push was refused by the owner (standing law: EVERYTHING rides a ferry, even docs/memory).**
 
-1. **The day was three gates + one official run, each failure root-caused before any fix:**
-   - Gate 2 (716/s) → pump overlap implemented (ack window: launch-and-return, 4 chunks × 64 sliding, slot-wait-takes-NO-token, per-chunk retire, drain-before-disconnect bounded 3 s, R7 bound + ack-flight slack). Pump flushes 685–1,139 ms → 10–31 ms. Loss stayed broker-side.
-   - **Gate 3 instrumented (owner option D): pidstat convicted the HARNESS, not the machine** — 120 sim processes = 427% (4.3 of 8 cores!) while EMQX idled at 71% of ONE core; docker-proxy (single thread) burned 41% carrying all broker traffic; browser closure alone 716→1,525/s. Owner's question "is my machine too weak" inverted with numbers.
-   - **Owner-ruled levers F + proxy bypass → implemented & tested:** sim fleet mode (`--devices-file`, one process × 10 devices, per-device connection + pacing loop, laws unchanged; 7 new parser laws) + fleet connects to the EMQX **container IP** (no docker-proxy). 12 processes replace 120.
-   - Gate 4: **1,999/s in-window + 298 drain tail = 2,004/s, zero drops** — green by the referee's own protocol (drain inside window).
-2. **Referee honesty fixes (owner-approved) before the official run:** (a) window law: END = fleet-stop, drain AFTER (inside-window drain diluted 630/600 → max 1,924/s < bar — a perfect run could never pass); verdict = (window+tail)/flight with tail asserted small; (b) stale a-1 deleted from devices.tsv → 119 devices = 99×20+20×1 = 2,000/s EXACTLY (zero-margin by design).
-3. **Official run 1: 1,998.5/s NOT MET (exit 3) — but stored == published (100.0000%).** Arithmetic convicted the harness again: each device's deadline grid anchored at its CONNECT (~0.45 s) → 99×~9 ticks short = 905/1,200,000. The pipeline was never at fault.
-4. **Owner approved `--start-epoch` grid anchoring → implemented (2 new laws, 31 sim tests)**: shared epoch for the whole fleet, catch-up burst at connect, kill computed FROM the epoch (not post-launch sleep). 5 s sanity: 10,110/10,000 (+1 boundary tick/device, overshoot direction = safe).
-5. **Official run 2 GREEN (exit 0)**: published (PUBACKed) 1,200,097; delivered = grid 1,200,000 + 119 kill-boundary ticks; stored 1,200,119 == delivered; 22 delivered-but-unacked at kill (QoS1 redelivery covers — per-device ledger↔DB reconciliation, every delta explained); per-shard 300,023–300,035 even; PH RSS 60.6→96.3 MB; CPU: sims 130%, EMQX 84%, PG 40%, PH 28%, proxy 13% — headroom everywhere.
-6. **Row 1 RECORDED in plan/09 §9/H (gitignored — never committed).** Margin is knife-edge BY DESIGN: stored==delivered means any real loss fails the bar.
-7. **UNCOMMITTED (32 files): the whole slice** — sharding, ack window, flush buffer/pump, 0020 migration, host wiring, sim fleet+anchor, fleet.sh/account.sh/run-sustained.sh v2, all tests (212). The ferry PR carries everything.
+1. **Ferry PR #36 merged** (`d25550d`): memory + 2 docs commits (perf-page closure pointer, LinkedIn story `docs/stories/2026-11-17-the-14-7x-gap.md` — owner-reviewed before publishing, his call).
+2. **P4 spec set drafted** (`phases/P4/`): 00 overview (DoD meter + decisions D1–D4) · 02 rules schema+CRUD+seeding (0021, FR-30/FR-15) · 03 threshold engine (plan/06 §3 verbatim, transition-only persistence) · 04 alert lifecycle (0022, dedup key `(tenant,asset,rule)`) · 05 severity+mute (offline never muted) · 06 offline watchdog (FR-31) · 07 email (0023, encrypted SMTP, acceptance #2 ≤60s leg) · 08 Telegram (FR-38 one-time code) · 09 reconciliation watchdog (HOME = P4, decision D2) · 10 warmup-demo + automated E2E #2/#3 · 11 gate G-P4. Spec 01 = CLOSED (batching).
+3. **"Dash ≤5s" honestly scoped at P4** = alert row + Realtime hub event; visual dashboard is P5 (recorded in 00-overview so nobody claims unbuilt UI).
+4. **phases/README P4 row** updated to "specs drafted — owner review pending". NOTES row logged.
 
 **First actions next session:**
-1. **Ferry PR with the owner** (all 32 files; move referee evidence `/tmp/opencode/referee2*.log` into `docs/perf/` first — /tmp dies on reboot). Then spec 01 DoD ticks (owner's hand).
-2. Housekeeping: delete the 6 merged ferry branches on origin (pending owner's yes).
-3. Watchdog spec agenda entry (published-vs-stored reconciliation; spec home TBD — decision item, not code).
-4. Revocation re-measure ≤ 60 s (owed from 2026-11-16).
+1. **Owner reviews the spec set** (architect law — no slice executes before his blessing; decisions D1–D4 in 00-overview are his to veto: rules REST shape, watchdog home=P4, fan-out channels, no-MediatR bus).
+2. On blessing: spec 02 opens → full production code into `study/implementation-code.md` (RULES §9.1 — the file is REPLACED with the active spec only) + agent test net failing-first (0021 RLS walls, CRUD ladder, seeding idempotency).
+3. Slice order fixed by dependencies: 02 → 03 → 04 → 05 → 06 → 07 → 08 → 09 → 10 → 11.
 
-**What NOT to do:** re-edit applied migrations (0020 applied — `assets.device_resolve_by_ids`); never neutralize `Nabd.ArchTests`; never commit plan/ or study/; no `gh` CLI; no tuning during a load run; never ack a message whose durable outcome did not commit; transient/unknown = never receipts (R10); never run with `deny_action=ignore`; a `pkill -f` pattern must not appear elsewhere in the same command line; EMQX authz cache TTL is absolute-from-insert; **the referee's strict bar has zero margin — never "re-run until it passes"; a failed run's arithmetic must be explained line by line first**.
+**What NOT to do:** execute any P4 spec before owner review; never push main direct (owner refused — law since 2026-11-17); never tick DoD boxes without the owner's hand (delegations must be recorded in the box itself); never generate long-form Arabic in specs/docs (RULES §2.7 — Arabic lives in the study file per §9.1 and existing NOTES convention); no quizzes in chat (RULES §9).
 
-**Standing pointers:** Docker off-by-default (owner starts it manually after boot; it died mid-run once — check the daemon first when Testcontainers mass-fails); dev port 5109 (`set -a; source .env; set +a`); suite runs SERIALLY (~2 min, 212+3+3 as of today); dev DB tracker at 20; EMQX 5.8.6 (`+S 8:8`, max_inflight 200 via client RM, mqueue 1,000 compose env); no `emqx ctl metrics` — dashboard API with Bearer; fleet = MQTT 3.1.1, broker-restart drops sessions (seq-hold law covers resend); sim logs UTC `[HH:mm:ss]`; `/tmp/opencode/*.log` ledgers volatile.
+**Standing pointers:** suite 212+3+3 on merged main; dev DB tracker at 20 (0021+ are P4's); EMQX env still up; `docker logs --timestamps -f nabd-emqx` + sim ledger = the drill witness pair; real-doors-only drills (the revoke drill pattern: register throwaway tenant via `POST /api/v1/tenants` → own password → full autonomy, zero DB crafting).
 
-**Status: P4 SPEC 01 CLOSED — PR #35 merged (`53efcb7`), all 5 DoD boxes ticked (owner delegated the ticks + comprehension; delegation recorded honestly in the box + NOTES; G6 ritual remains open to the owner any time). The batching lever is proven and sealed. NEXT: watchdog agenda entry (owner decision: spec home + scope) → threshold engine (P4 main line, plan/06 §3.2).**
+**Status: P4 specs drafted, owner review pending. Spec 01 sealed (PR #35/#36). Next: review → spec 02 (rules data foundation).**
 
 ## Where we are (one paragraph)
 
