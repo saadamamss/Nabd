@@ -4,12 +4,16 @@ using Nabd.Ingestion.Contracts;
 
 /// <summary>
 /// The validation pipeline's pure core (P3 spec 03): stage 3 (parse — handed to
-/// PayloadV1Parser) → stage 4 (channel + finiteness, via the IDeviceChannels
-/// edge) → stage 5 (tenant fill + clock discipline, via the IIngestionIdentity
-/// edge). Stages 1–2 live at the doors (P2/spec 05); stage 6 (store) and
-/// stage 7 (emit) belong to the callers — the pipeline never touches a store.
+/// PayloadV1Parser) → stage 4 (channel + finiteness) → stage 5 (tenant fill +
+/// clock discipline). Stages 1–2 live at the doors (P2/spec 05); stage 6 (store)
+/// and stage 7 (emit) belong to the callers — the pipeline never touches a store.
 /// Clock discipline NEVER rejects (plan/05 §6): a far-future stamp is CLAMPED to
 /// received_at, a stale stamp is accepted-and-flagged — both as E422_TS warnings.
+/// P4 spec 01 (Move D): the post-resolution core is extracted into
+/// ValidateResolved — ONE verdict text, TWO identity answerers: the HTTP path
+/// resolves per device via the edges (unchanged rates), the flush pump passes
+/// the set-resolver's answer (ONE resolution per flush). Verdicts are
+/// byte-identical: the core was MOVED, not rewritten.
 /// </summary>
 public sealed class ValidationPipeline(IDeviceChannels channels, IIngestionIdentity identity, int maxReadingsPerBatch = PayloadV1Parser.MaxReadingsPerMessage)
 {
@@ -31,6 +35,22 @@ public sealed class ValidationPipeline(IDeviceChannels channels, IIngestionIdent
                 "unknown device or channel catalog (uniform rejection — no existence hints)");
         }
 
+        // The extracted core — byte-identical verdicts (stages 3–5 moved verbatim;
+        // the keys' null-safety is already proven by the uniform check above).
+        return ValidateResolved(envelope, tenant.Value, keys!);
+    }
+
+    /// <summary>
+    /// The POST-resolution core (P4 spec 01, Move D): stages 3–5, MOVED verbatim
+    /// from the pre-extraction RunAsync. Takes the ALREADY-RESOLVED identity —
+    /// the HTTP path answers it per device above; the flush pump answers it
+    /// from 0020's set resolver ONCE per flush. ABSENCE (unknown/revoked/
+    /// deactivated) must NEVER reach here — the uniform rejection happens at
+    /// resolution, before this method runs. Synchronous BY LAW: no awaits live
+    /// inside — parse, content, and clock discipline are pure CPU.
+    /// </summary>
+    public PipelineResult ValidateResolved(IngestEnvelope envelope, Guid tenantId, IReadOnlySet<string> channelKeys)
+    {
         // Stage 3: structure (payload v1, seq bound, count bound — THIS transport's cap).
         if (!PayloadV1Parser.TryParse(envelope.Payload, maxReadingsPerBatch, out var batch, out var error) || batch is null)
         {
@@ -41,7 +61,7 @@ public sealed class ValidationPipeline(IDeviceChannels channels, IIngestionIdent
         var index = 0;
         foreach (var reading in batch.Readings)
         {
-            if (!keys.Contains(reading.ChannelKey))
+            if (!channelKeys.Contains(reading.ChannelKey))
             {
                 return PipelineResult.Fail(IngestionErrors.E422_UNKNOWN_CHANNEL,
                     $"reading[{index}] channel '{reading.ChannelKey}' is not in the device's template");
@@ -82,7 +102,7 @@ public sealed class ValidationPipeline(IDeviceChannels channels, IIngestionIdent
             }
 
             readings.Add(new NormalizedReading(
-                tenant.Value, envelope.DeviceId, reading.ChannelKey,
+                tenantId, envelope.DeviceId, reading.ChannelKey,
                 eventTime, reading.Value, batch.Seq, envelope.ReceivedAtUtc));
         }
 

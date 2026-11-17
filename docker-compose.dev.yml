@@ -65,6 +65,18 @@ services:
       # ── the broker learns its master (P2 spec 05) ──
       EMQX_ALLOW_ANONYMOUS: "false"
       EMQX_AUTHORIZATION__NO_MATCH: deny
+      # P4 spec 01 (L2, owner-ruled 2026-11-16 after the live kick test): a denied
+      # publish DISCONNECTS the client — deny is never PUBACKed. The device's
+      # seq-hold law (simulator) re-sends the unacked seq after reconnect; the
+      # store dedups it. Silent loss becomes loud, recovered loss.
+      EMQX_AUTHORIZATION__DENY_ACTION: disconnect
+      # P4 spec 01 (sharding ruling 2026-11-16, REVERTED to the safe value): the
+      # session mqueue is the drop point — but the 10,000 raise created a jammed
+      # backlog that saturated the broker's connection process (mailbox_overflow
+      # + max_heap_size kills, session recreated, backlog lost invisibly). 1,000
+      # per connection with 4 sharded connections: drops stay small and honest,
+      # the system stays out of the metastable jam.
+      EMQX_MQTT__MAX_MQUEUE_LEN: 1000
       # authentication: HTTP door #1 (auth)
       EMQX_AUTHENTICATION__1__MECHANISM: password_based
       EMQX_AUTHENTICATION__1__BACKEND: http

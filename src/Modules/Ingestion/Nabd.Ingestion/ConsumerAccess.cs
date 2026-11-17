@@ -53,19 +53,38 @@ public sealed class ConsumerAccess : IConsumerAccess
     public bool AuthorizePublish(string username, string topic)
         => false;   // the consumer READS. It never speaks on the broker.
 
-    // The consumer's subscribe allow-set is EXACTLY one topic-filter shape:
+    // The consumer's subscribe allow-set is the ONE device-telemetry shape
     //   t / (+|literal) / dev / (+|literal) / v1
     // wildcards permitted ONLY at segments 1 (tenant) and 3 (device) — never in
     // the structural segments, never as '#' (multi-level), never a different
-    // segment count. The consumer reads device telemetry, nothing else.
+    // segment count — in TWO forms: bare, and wrapped in an MQTT5 shared
+    // subscription ($share/<group>/... — the sharding ruling 2026-11-16: N
+    // connections share one group so no single broker connection process
+    // carries the whole fleet). The group is one wildcard-free, non-$ segment.
+    // The consumer reads device telemetry, nothing else.
     private static bool SubscribeShapeLawful(string? topic)
     {
         if (string.IsNullOrEmpty(topic)) return false;
+        if (topic.StartsWith("$share/", StringComparison.Ordinal))
+        {
+            var rest = topic["$share/".Length..];
+            var groupEnd = rest.IndexOf('/');
+            if (groupEnd <= 0) return false;
+            if (!SharedGroupNameLawful(rest[..groupEnd])) return false;
+            topic = rest[(groupEnd + 1)..];
+        }
         var segments = topic.Split('/');
         if (segments.Length != 5) return false;
         if (segments[0] != "t" || segments[2] != "dev" || segments[4] != "v1") return false;
         return SegmentLawful(segments[1]) && SegmentLawful(segments[3]);
     }
+
+    private static bool SharedGroupNameLawful(string group)
+        => group.Length > 0
+           && !group.Contains('/')
+           && !group.Contains('+')
+           && !group.Contains('#')
+           && !group.StartsWith('$');
 
     private static bool SegmentLawful(string segment)
         => segment == "+" || (segment.Length > 0 && !segment.Contains('+') && !segment.Contains('#'));

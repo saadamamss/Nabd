@@ -25,3 +25,28 @@ public interface IIngestionIdentity
     /// <summary>The device's tenant, or null when the device is unknown.</summary>
     Task<Guid?> ResolveTenantIdAsync(Guid deviceId, CancellationToken ct = default);
 }
+
+
+/// <summary>
+/// ONE resolved device as the set-based edge answers (P4 spec 01, 0020):
+/// the tenant plus the template's lawful channel keys. An EMPTY keys set is
+/// a live device whose template has no channels — the flush treats it
+/// UNIFORMLY with a missing row (E422-class; anti-enumeration, 0017's
+/// coalesce-'{}' law, set-shaped).
+/// </summary>
+public sealed record DeviceCatalogRow(Guid DeviceId, Guid TenantId, IReadOnlySet<string> ChannelKeys);
+
+/// <summary>
+/// The flush path's identity edge (P4 spec 01, Move B): ONE set-based call
+/// resolves EVERY device in a flush (0020's third twin of the narrow-exception
+/// law — 0014/0016/0017's shape: SECURITY DEFINER, the RLS wall absolute for
+/// direct access). Missing from the returned map = unknown / revoked /
+/// deactivated — read UNIFORMLY (per-message E422 receipt, no existence
+/// hints). Resolution is per flush, NO cache (R3): revocation propagation
+/// stays fresh (≪ 60 s bound).
+/// </summary>
+public interface IIngestionSetResolver
+{
+    /// <summary>Resolve many devices in ONE call. Unknown/revoked devices are simply absent from the map.</summary>
+    Task<IReadOnlyDictionary<Guid, DeviceCatalogRow>> ResolveDevicesAsync(IEnumerable<Guid> deviceIds, CancellationToken ct = default);
+}

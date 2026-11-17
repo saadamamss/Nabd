@@ -18,7 +18,7 @@ using Nabd.Ingestion.Contracts;
 /// 0014: the RLS wall stays absolute for direct access; the functions are the
 /// only windows, each one fixed SQL, one parameter, no table access beyond it.
 /// </summary>
-public sealed class IngestionEdges(AssetsDb db) : IDeviceChannels, IIngestionIdentity
+public sealed class IngestionEdges(AssetsDb db) : IDeviceChannels, IIngestionIdentity, IIngestionSetResolver
 {
     public async Task<IReadOnlySet<string>?> GetChannelKeysAsync(Guid deviceId, CancellationToken ct = default)
     {
@@ -56,6 +56,41 @@ public sealed class IngestionEdges(AssetsDb db) : IDeviceChannels, IIngestionIde
 
             var raw = await cmd.ExecuteScalarAsync(ct);
             return raw is Guid tenant ? tenant : null;
+        }
+        finally
+        {
+            await conn.DisposeAsync();
+        }
+    }
+
+    public async Task<IReadOnlyDictionary<Guid, DeviceCatalogRow>> ResolveDevicesAsync(
+        IEnumerable<Guid> deviceIds, CancellationToken ct = default)
+    {
+        var ids = deviceIds.Distinct().ToArray();
+        if (ids.Length == 0) return new Dictionary<Guid, DeviceCatalogRow>();
+
+        var conn = await db.OpenPreAuthConnectionAsync(ct);
+        try
+        {
+            // 0020: the set-based twin — ONE call resolves the WHOLE flush
+            // (fact 6's resolver half). Absent from the answer = unknown /
+            // revoked / deactivated; present with EMPTY keys = no lawful
+            // channels. The flush reads BOTH uniformly (anti-enumeration).
+            await using var cmd = new NpgsqlCommand(
+                "SELECT device_id, tenant_id, channel_keys FROM assets.device_resolve_by_ids(@ids)", conn);
+            cmd.Parameters.AddWithValue("ids", ids);
+
+            var resolved = new Dictionary<Guid, DeviceCatalogRow>(ids.Length);
+            await using var reader = await cmd.ExecuteReaderAsync(ct);
+            while (await reader.ReadAsync(ct))
+            {
+                var deviceId = reader.GetGuid(0);
+                var keys = reader.GetFieldValue<string[]>(2);
+                resolved[deviceId] = new DeviceCatalogRow(
+                    deviceId, reader.GetGuid(1),
+                    keys.Length == 0 ? new HashSet<string>() : new HashSet<string>(keys));
+            }
+            return resolved;
         }
         finally
         {
