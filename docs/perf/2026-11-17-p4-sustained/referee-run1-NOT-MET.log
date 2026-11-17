@@ -1,0 +1,26 @@
+PH pid=69337 rss_start=59888 kB
+consumer shards subscribed: 4/4 — fleet may fly
+authz door probe   : allow
+fleet up: 12 processes × 10 devices = 119 devices for 600s (slow group dup=1, broker 172.18.0.2:1883)
+fleet stopped
+
+=== stored + dup + latency (window 2026-11-17T01:41:43+02:00 → 2026-11-17T01:51:43+02:00) ===
+
+=== raw_rejects + rejection counters ===
+
+=== RESULT — Sustained run ===
+window            : 2026-11-17T01:41:43+02:00 → 2026-11-17T01:51:43+02:00 (600 s)
+published copies  : 1199095   (PUBACKed ledger lines; slow group dup included)
+published unique  : 1199095
+stored            : 1198422
+dup rows          : 0   (count(*) - count(DISTINCT id-key) = 0 expected)
+lost unique       : 673
+rows/s stored     : 1997
+latency p50/p95/p99 (s): 0.001141 / 0.001928 / 0.003685
+raw_rejects rows  : 0
+health/ready      : {"status":"degraded","note":"P0 skeleton — readiness checks (db/queue/broker) arrive with the compose services (08 §6)","version":"0.1.0-p0","rejected":{}}
+drain tail         : 673 rows in [END, END+31) (stragglers, bounded by the aggregate window)
+stored total       : 1199095 (window 1198422 + tail 673)
+sustained rate     : 1998.5 rows/s ((window+tail)/flight, flight = 600 s)
+REFEREE VERDICT    : FAIL — 1998.5 < 2,000 rows/s (NFR-01)
+OFFICIAL RUN ended: 2026-11-16T23:54:08Z exit=3
