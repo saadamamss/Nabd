@@ -50,12 +50,13 @@ public sealed class FlushBuffer
     private long _pendingMessages;
     private long _bufferedReadings;
     private TaskCompletionSource _sizeTrigger = NewTrigger();
-
-    public FlushBuffer(int flushSize)
+    private readonly ReconcileCounters _reconcile;
+    public FlushBuffer(int flushSize, ReconcileCounters reconcile)
     {
         if (flushSize < 1)
             throw new ArgumentOutOfRangeException(nameof(flushSize), "FlushSize must be >= 1 (fail-shut).");
         _flushSize = flushSize;
+        _reconcile = reconcile ?? throw new ArgumentNullException(nameof(reconcile));
     }
 
     /// <summary>
@@ -68,11 +69,20 @@ public sealed class FlushBuffer
         if (PayloadV1Parser.TryParse(envelope.Payload, PayloadV1Parser.MaxReadingsPerMessage, out var batch, out _))
             parsed = batch;
 
+        _reconcile.Delivered(parsed?.Readings.Count ?? 1);
+
         (parsed is null ? _parseRejects : _accepted).Enqueue(new PendingDelivery(envelope, parsed, ack));
         Interlocked.Increment(ref _pendingMessages);
         var readings = Interlocked.Add(ref _bufferedReadings, parsed?.Readings.Count ?? 0);
         if (readings >= _flushSize) _sizeTrigger.TrySetResult();
     }
+
+    /// <summary>
+    /// P4 spec 02 (the QUIET law's input): no accepted readings AND no
+    /// parse-rejects sitting in the queues — the pump's own sleep condition,
+    /// verbatim, one definition.
+    /// </summary>
+    public bool IsQuiet => BufferedReadings == 0 && ParseRejectsCount == 0;
 
     /// <summary>
     /// The pump's immediate wake: the task that completed when the size bound
