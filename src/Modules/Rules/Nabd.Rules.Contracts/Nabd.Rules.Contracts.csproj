@@ -2,6 +2,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\..\SharedKernel\Nabd.SharedKernel\Nabd.SharedKernel.csproj" />
+    <ProjectReference Include="..\..\..\Modules\Identity\Nabd.Identity.Contracts\Nabd.Identity.Contracts.csproj" />
   </ItemGroup>
 
   <PropertyGroup>

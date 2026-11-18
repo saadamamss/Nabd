@@ -28,6 +28,10 @@ public static class Operations
     public const string DeviceTokenReissue = "device.token.reissue";
     public const string DeviceRevoke = "device.revoke";
     public const string TemplateRead = "template.read";
+    public const string RuleRead = "rule.read";       // P4 spec 03 (FR-30): viewer reads
+    public const string RuleCreate = "rule.create";   // tenant_admin manages
+    public const string RuleUpdate = "rule.update";
+    public const string RuleDelete = "rule.delete";
 }
 
 
@@ -39,7 +43,8 @@ public static class AuthorizationMatrix
         {
             Operations.TenantRead, Operations.UserRead,
             Operations.UserLocaleSet,Operations.PasswordChange,
-            Operations.DeviceRead, Operations.AssetRead, Operations.TemplateRead
+            Operations.DeviceRead, Operations.AssetRead, Operations.TemplateRead,
+            Operations.RuleRead
         },
 
         ["tenant_admin"] = new HashSet<string>
@@ -51,7 +56,9 @@ public static class AuthorizationMatrix
             Operations.DeviceRegister, Operations.DeviceRead,
             Operations.DeviceTokenReissue, Operations.DeviceRevoke,
             Operations.AssetRead, Operations.AssetCreate,
-            Operations.AssetUpdate, Operations.AssetArchive,Operations.TemplateRead
+            Operations.AssetUpdate, Operations.AssetArchive,Operations.TemplateRead,
+            Operations.RuleRead, Operations.RuleCreate,
+            Operations.RuleUpdate, Operations.RuleDelete,
 
         },
         ["platform_admin"] = new HashSet<string>
@@ -64,8 +71,9 @@ public static class AuthorizationMatrix
             Operations.DeviceTokenReissue, Operations.DeviceRevoke,
             Operations.TenantList, Operations.TenantDisable, Operations.TenantEnable,
             Operations.AssetRead, Operations.AssetCreate,
-            Operations.AssetUpdate, Operations.AssetArchive,Operations.TemplateRead
-
+            Operations.AssetUpdate, Operations.AssetArchive,Operations.TemplateRead,
+            Operations.RuleRead, Operations.RuleCreate,
+            Operations.RuleUpdate, Operations.RuleDelete,
         },
     };
 
