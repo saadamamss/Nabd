@@ -57,6 +57,35 @@ public sealed class DeviceLifecycle(AssetsDb db, DeviceTokenHasher hasher) : IDe
 
             await LogAsync(conn, tx, deviceId, acting.TenantId, "issued", acting.UserId.ToString(), ct);
 
+            // P4 spec 03 (FR-15): seed the template's LIMITED channels as rules,
+            // INSIDE the mint transaction — a device must never exist without
+            // its rules (evaluable the moment it publishes). The arch walls are
+            // code-level and untouched: this is data movement driven by this
+            // device's own template. ON CONFLICT = idempotent by construction.
+            await using (var seed = new NpgsqlCommand("""
+                INSERT INTO rules.rules
+                    (id, tenant_id, device_id, channel_key, rule_type,
+                     threshold_low, threshold_high, duration_seconds, cooldown_minutes,
+                     severity, enabled)
+                SELECT gen_random_uuid(), d.tenant_id, d.id, cd.key,
+                       CASE
+                           WHEN cd.lower_limit IS NOT NULL AND cd.upper_limit IS NOT NULL
+                               THEN 'outside_range'
+                           WHEN cd.lower_limit IS NOT NULL THEN 'below'
+                           ELSE 'above'
+                       END,
+                       cd.lower_limit, cd.upper_limit, 60, 60, 'warn', true
+                FROM assets.devices d
+                JOIN assets.channel_definitions cd ON cd.template_id = d.template_id
+                WHERE d.id = @device
+                  AND (cd.lower_limit IS NOT NULL OR cd.upper_limit IS NOT NULL)
+                ON CONFLICT DO NOTHING;
+                """, conn, tx))
+            {
+                seed.Parameters.AddWithValue("device", deviceId);
+                await seed.ExecuteNonQueryAsync(ct);
+            }
+
             await tx.CommitAsync(ct);
             return Result<DeviceMintResult>.Success(new DeviceMintResult(
                 new DeviceSnapshot2(deviceId, acting.TenantId, request.AssetId, assetTemplate,

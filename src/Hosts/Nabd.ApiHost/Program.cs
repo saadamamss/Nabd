@@ -12,6 +12,8 @@ using Nabd.Ingestion.Contracts;
 using Nabd.Ingestion;
 using Nabd.TelemetryStore;
 using Nabd.TelemetryStore.Contracts;
+using Nabd.Rules;
+using Nabd.Rules.Contracts;
 
 _ = Nabd.Identity.EnumerationArmor.BurnHash;
 
@@ -57,7 +59,8 @@ builder.Services.AddSingleton<IAuthorizationHandler, InternalSecretHandler>();
 builder.Services.AddSingleton<IAuthorizationMiddlewareResultHandler, InternalDenyResultHandler>();
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddSingleton<IConsumerAccess, ConsumerAccess>();
-
+builder.Services.AddSingleton<RulesDb>();
+builder.Services.AddSingleton<IDeviceRules, DeviceRules>();
 // ===== P3 spec 05 — the HTTP ingest door's wiring (plan/05 §4, VETO ruling) =====
 // The door rides the SAME pipeline + store as the MQTT path; only the transport
 // differs. The pipeline instance here carries the HTTP batch cap (500 — §4);
