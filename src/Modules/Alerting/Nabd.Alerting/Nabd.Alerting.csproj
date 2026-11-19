@@ -4,6 +4,12 @@
     <ProjectReference Include="..\..\..\SharedKernel\Nabd.SharedKernel\Nabd.SharedKernel.csproj" />
     <ProjectReference Include="..\Nabd.Alerting.Contracts\Nabd.Alerting.Contracts.csproj" />
     <ProjectReference Include="..\..\Rules\Nabd.Rules.Contracts\Nabd.Rules.Contracts.csproj" />
+    <ProjectReference Include="..\..\TelemetryStore\Nabd.TelemetryStore.Contracts\Nabd.TelemetryStore.Contracts.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Npgsql" Version="10.0.3" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.14" />
   </ItemGroup>
 
   <PropertyGroup>

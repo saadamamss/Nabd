@@ -14,6 +14,8 @@ using Nabd.TelemetryStore;
 using Nabd.TelemetryStore.Contracts;
 using Nabd.Rules;
 using Nabd.Rules.Contracts;
+using Nabd.Alerting;
+using Nabd.Alerting.Contracts;
 
 _ = Nabd.Identity.EnumerationArmor.BurnHash;
 
@@ -82,6 +84,9 @@ builder.Services.AddHostedService<Nabd.TelemetryStore.DeviceStatusFlushWorker>()
 builder.Services.AddSingleton<DeviceRateLimiter>();
 builder.Services.AddSingleton<RejectionCounters>();
 builder.Services.AddSingleton<HttpIngestDoor>();
+// ===== P4 spec 05 — the Alerting room's doors (the lifecycle lives in the PH) =====
+builder.Services.AddSingleton<AlertingDb>();
+builder.Services.AddSingleton<IAlerting, AlertService>();
 // Health endpoints (ADR-010; 08 §6): liveness = process up.
 // Readiness expands in P1+ to probe DB, queue and broker session (08 §6 readiness list).
 builder.Services.AddHealthChecks();

@@ -1,11 +1,19 @@
 using Nabd.SharedKernel;
+
 namespace Nabd.Alerting.Contracts;
 
-/// <summary>Alert lifecycle events (03 §3; 06 §5 OPEN→ACK→RESOLVED). Notifications + Realtime listen.</summary>
-public sealed record AlertRaised(
-    Guid TenantId, Guid AlertId, Guid AssetId, Guid RuleId,
-    string Severity, string Title, string TitleEn, DateTimeOffset RaisedAtUtc) : IntegrationEvent;
+/// <summary>
+/// P4 spec 05 (plan/06 §5.1): the fan-out event. It carries the WHOLE stored row
+/// (snapshot) so Notifications (spec 08) and Realtime never read another room's
+/// schema — and so the P0 placeholder's scattered fields cannot drift again.
+/// Published ONLY after the alert row committed (no receipt before the durable outcome).
+/// </summary>
+public sealed record AlertRaised(AlertSnapshot Alert) : IntegrationEvent;
 
-public sealed record AlertAcknowledged(Guid TenantId, Guid AlertId, Guid UserId, DateTimeOffset AtUtc) : IntegrationEvent;
+/// <summary>ACK recorded: who and when (plan/06 §5.1).</summary>
+public sealed record AlertAcknowledged(
+    Guid TenantId, Guid AlertId, Guid UserId, DateTimeOffset AtUtc) : IntegrationEvent;
 
-public sealed record AlertResolved(Guid TenantId, Guid AlertId, DateTimeOffset AtUtc) : IntegrationEvent;
+/// <summary>RESOLVED (manual or §5.3 auto). `Reason` is the documented why.</summary>
+public sealed record AlertResolved(
+    Guid TenantId, Guid AlertId, DateTimeOffset AtUtc, string Reason) : IntegrationEvent;

@@ -5,6 +5,7 @@ using Nabd.Identity;
 using Nabd.Admin;
 using Nabd.Assets;
 using Nabd.Rules;
+using Nabd.Alerting;
 
 namespace Nabd.IsolationSuite;
 
@@ -38,6 +39,9 @@ public sealed class PostgresFixture : IAsyncLifetime
 
     /// <summary>Rules lane — the room's own DB door (P4 spec 03), same app identity.</summary>
     public RulesDb Rules { get; private set; } = null!;
+
+    /// <summary>Alerting lane — the room's own DB door (P4 spec 05), same app identity.</summary>
+    public AlertingDb Alerts { get; private set; } = null!;
 
     public async Task InitializeAsync()
     {
@@ -161,6 +165,8 @@ public sealed class PostgresFixture : IAsyncLifetime
         Assets = new AssetsDb();
         // the Rules room's DB door — same env vars, same fail-shut shape (P4 spec 03)
         Rules = new RulesDb();
+        // the Alerting room's DB door — same env vars, same fail-shut shape (P4 spec 05)
+        Alerts = new AlertingDb();
     }
 
     public async Task DisposeAsync()

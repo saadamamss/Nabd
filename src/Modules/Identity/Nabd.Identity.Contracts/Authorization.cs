@@ -32,6 +32,10 @@ public static class Operations
     public const string RuleCreate = "rule.create";   // tenant_admin manages
     public const string RuleUpdate = "rule.update";
     public const string RuleDelete = "rule.delete";
+    // P4 spec 05 (FR-32/FR-33): alerts — viewer reads + acknowledges; tenant_admin resolves.
+    public const string AlertRead = "alert.read";
+    public const string AlertAck = "alert.acknowledge";
+    public const string AlertResolve = "alert.resolve";
 }
 
 
@@ -44,7 +48,8 @@ public static class AuthorizationMatrix
             Operations.TenantRead, Operations.UserRead,
             Operations.UserLocaleSet,Operations.PasswordChange,
             Operations.DeviceRead, Operations.AssetRead, Operations.TemplateRead,
-            Operations.RuleRead
+            Operations.RuleRead,
+            Operations.AlertRead, Operations.AlertAck
         },
 
         ["tenant_admin"] = new HashSet<string>
@@ -59,7 +64,7 @@ public static class AuthorizationMatrix
             Operations.AssetUpdate, Operations.AssetArchive,Operations.TemplateRead,
             Operations.RuleRead, Operations.RuleCreate,
             Operations.RuleUpdate, Operations.RuleDelete,
-
+            Operations.AlertRead, Operations.AlertAck, Operations.AlertResolve
         },
         ["platform_admin"] = new HashSet<string>
         {
@@ -74,6 +79,7 @@ public static class AuthorizationMatrix
             Operations.AssetUpdate, Operations.AssetArchive,Operations.TemplateRead,
             Operations.RuleRead, Operations.RuleCreate,
             Operations.RuleUpdate, Operations.RuleDelete,
+            Operations.AlertRead, Operations.AlertAck, Operations.AlertResolve
         },
     };
 
