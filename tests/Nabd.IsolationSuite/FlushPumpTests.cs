@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Nabd.Ingestion;
 using Nabd.Ingestion.Contracts;
+using Nabd.SharedKernel;
 using Nabd.TelemetryStore.Contracts;
 using Xunit;
 
@@ -223,11 +224,17 @@ public sealed class FlushPumpTests
     private static (FlushPump Pump, FlushBuffer Buffer, AckRecorder Acks, FakeRawRejects RawRejects,
         RecordingTracker Tracker, RejectionCounters Counters, FlushCounters FlushCounters, FakeResolver Resolver)
         BuildPump(IReadingsStore store, FlushOptions? options = null, params DeviceCatalogRow[] rows)
-        => BuildPump(store, options, NullLogger<FlushPump>.Instance, rows);
+        => BuildPump(store, options, NullLogger<FlushPump>.Instance, null, rows);
 
     private static (FlushPump Pump, FlushBuffer Buffer, AckRecorder Acks, FakeRawRejects RawRejects,
         RecordingTracker Tracker, RejectionCounters Counters, FlushCounters FlushCounters, FakeResolver Resolver)
         BuildPump(IReadingsStore store, FlushOptions? options, ILogger<FlushPump> logger, params DeviceCatalogRow[] rows)
+        => BuildPump(store, options, logger, null, rows);
+
+    private static (FlushPump Pump, FlushBuffer Buffer, AckRecorder Acks, FakeRawRejects RawRejects,
+        RecordingTracker Tracker, RejectionCounters Counters, FlushCounters FlushCounters, FakeResolver Resolver)
+        BuildPump(IReadingsStore store, FlushOptions? options, ILogger<FlushPump> logger, IEventBus? bus,
+            params DeviceCatalogRow[] rows)
     {
         var o = options ?? new FlushOptions(FlushSize: 10, FlushIntervalMs: 60_000);
         var reconcile = new ReconcileCounters();   // P4 spec 02: required by the buffer (fail-shut)
@@ -243,6 +250,7 @@ public sealed class FlushPumpTests
             new ValidationPipeline(new StubChannels(), new StubIdentity()),
             store, rawRejects, tracker, counters, flushCounters,
             reconcile,
+            bus ?? new InProcessEventBus(),
             logger);
         return (pump, buffer, acks, rawRejects, tracker, counters, flushCounters, resolver);
     }
@@ -888,5 +896,38 @@ public sealed class FlushPumpTests
         Assert.Equal((200, 100), (FlushOptions.From(200, 100).FlushSize, FlushOptions.From(200, 100).FlushIntervalMs));
         Assert.Equal(1, FlushOptions.From(1, 1).FlushSize);                  // the lawful floor
         Assert.Equal(65535, FlushOptions.From(65535, 1000).FlushSize);       // the lawful ceiling
+    }
+
+    // ---- fact 17 — spec 04: committed batches exist only AFTER the commit ------
+
+    [Fact]
+    public async Task committed_batches_are_published_only_after_the_store_commits()
+    {
+        var bus = new InProcessEventBus();
+        var seen = new List<CommittedBatch>();
+        bus.Subscribe<CommittedBatch>((b, _) => { seen.Add(b); return Task.CompletedTask; });
+
+        // a store that NEVER commits → the engine (the subscriber) must hear NOTHING
+        var (pumpFail, bufferFail, acksFail, _, _, _, _, _) =
+            BuildPump(new ThrowingStore(), null, NullLogger<FlushPump>.Instance, bus,
+                Catalog(TenantA, DeviceA, "temp"));
+        for (var i = 0; i < 3; i++)
+            bufferFail.Offer(Envelope(DeviceA, Payload("2026-11-14T11:59:30.000Z", i, (22.5, "temp"))), acksFail.Ack);
+        await pumpFail.FlushOnceAsync(CancellationToken.None);
+        Assert.Empty(seen);
+
+        // a committing store → exactly ONE batch for the device, carrying its rows
+        var (pumpOk, bufferOk, acksOk, _, _, _, _, _) =
+            BuildPump(new RecordingStore(), null, NullLogger<FlushPump>.Instance, bus,
+                Catalog(TenantA, DeviceA, "temp"));
+        bufferOk.Offer(Envelope(DeviceA, Payload("2026-11-14T11:59:30.000Z", 1, (22.5, "temp"))), acksOk.Ack);
+        await pumpOk.FlushOnceAsync(CancellationToken.None);
+
+        var batch = Assert.Single(seen);
+        Assert.Equal(TenantA, batch.TenantId);
+        Assert.Equal(DeviceA, batch.DeviceId);
+        var reading = Assert.Single(batch.Readings);
+        Assert.Equal("temp", reading.ChannelKey);
+        Assert.Equal(22.5, reading.Value);
     }
 }

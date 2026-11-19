@@ -98,3 +98,15 @@ public sealed class StoreFlushException(string sqlState, bool isDeterministic, E
     public string SqlState { get; } = sqlState;
     public bool IsDeterministic { get; } = isDeterministic;
 }
+
+/// <summary>
+/// P4 spec 04: the COMMITTED fact — published by the flush pump only after its
+/// INSERT returned. The threshold engine consumes exactly this type, so a
+/// reading that is not durable can never raise an alert (R-law). It also rides
+/// inside CrossingDetected/ConditionRestored so Alerting gets the observed value.
+/// </summary>
+public sealed record CommittedReading(
+    Guid DeviceId, string ChannelKey, double Value, DateTimeOffset TimeUtc);
+
+public sealed record CommittedBatch(
+    Guid TenantId, Guid DeviceId, IReadOnlyList<CommittedReading> Readings);

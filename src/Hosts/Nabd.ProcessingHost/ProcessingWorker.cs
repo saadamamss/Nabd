@@ -8,6 +8,7 @@ using Nabd.Ingestion;
 using Nabd.Ingestion.Contracts;
 using Nabd.TelemetryStore;
 using Nabd.TelemetryStore.Contracts;
+using Nabd.SharedKernel;
 
 /// <summary>
 /// Processing Host worker (03 §5): the composition root's long-running loop.
@@ -23,6 +24,7 @@ public sealed class ProcessingWorker(
     IConfiguration configuration,
     DeviceStatusTracker tracker,
     TelemetryStoreDb telemetryDb,
+    IEventBus bus,
     ILogger<ProcessingWorker> logger,
     ILoggerFactory loggerFactory) : BackgroundService
 {
@@ -62,6 +64,7 @@ public sealed class ProcessingWorker(
         var pump = new FlushPump(
             buffer, flush, edges, pipeline, store, rawRejects, tracker, counters, flushCounters,
             reconcile,
+            bus,
             loggerFactory.CreateLogger<FlushPump>());
 
         var consumer = new EmqxIngestConsumer(

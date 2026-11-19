@@ -8,6 +8,7 @@ using Nabd.Assets.Contracts;
 using Nabd.Identity.Contracts;
 using Nabd.Ingestion;
 using Nabd.Ingestion.Contracts;
+using Nabd.SharedKernel;
 using Nabd.TelemetryStore;
 using Nabd.TelemetryStore.Contracts;
 using Npgsql;
@@ -143,6 +144,7 @@ public sealed class DurabilityNetTests(PostgresFixture pg) : IClassFixture<Postg
             readings, rawRejects, tracker,
             new RejectionCounters(), new FlushCounters(),
             reconcile,
+            new InProcessEventBus(),   // P4 spec 04: the pump always has a bus
             NullLogger<FlushPump>.Instance);
         return (buffer, pump, acks, tracker);
     }
