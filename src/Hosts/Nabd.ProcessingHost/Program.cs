@@ -1,3 +1,5 @@
+using Nabd.Alerting;
+using Nabd.Alerting.Contracts;
 using Nabd.ProcessingHost;
 using Nabd.Rules;
 using Nabd.SharedKernel;
@@ -18,6 +20,12 @@ builder.Services.AddSingleton<IEventBus, InProcessEventBus>();
 builder.Services.AddSingleton<RulesDb>();
 builder.Services.AddSingleton<RulesEngine>();
 builder.Services.AddHostedService<RulesCheckpointWorker>();
+// P4 spec 05: the lifecycle consumer. AlertService is the room's only DB owner;
+// the interface registration keeps the doors' contract identical to ApiHost's.
+builder.Services.AddSingleton<AlertingDb>();
+builder.Services.AddSingleton<AlertService>();
+builder.Services.AddSingleton<IAlerting>(sp => sp.GetRequiredService<AlertService>());
+builder.Services.AddSingleton<AlertLifecycle>();
 
 var host = builder.Build();
 
@@ -25,5 +33,7 @@ var host = builder.Build();
 // subscription must be live before the pump's first publish, and the checkpoint
 // worker is not a guarantee of ordering.
 host.Services.GetRequiredService<RulesEngine>();
-
+// spec 05: subscribe BEFORE the pump's first publish — the same boot-order law as
+// the engine (an event published with no subscriber is gone forever).
+host.Services.GetRequiredService<AlertLifecycle>();
 host.Run();
