@@ -3,6 +3,7 @@ namespace Nabd.Ingestion;
 using System.Diagnostics;
 using Microsoft.Extensions.Logging;
 using Nabd.Ingestion.Contracts;
+using Nabd.SharedKernel;
 using Nabd.TelemetryStore.Contracts;
 
 /// <summary>The outcome of ONE flush attempt — the loop's steering input.</summary>
@@ -67,6 +68,7 @@ public sealed class FlushPump(
     RejectionCounters counters,
     FlushCounters flushCounters,
     ReconcileCounters? reconcile,
+    IEventBus bus,
     ILogger<FlushPump> logger)
 {
     /// <summary>Serializes flush attempts — the timer wake, the size wake, and the final flush never interleave.</summary>
@@ -364,6 +366,7 @@ public sealed class FlushPump(
         try
         {
             await store.StoreFlushAsync(rows.Select(ToDto).ToList(), ct);
+            await PublishCommittedAsync(rows, ct);
         }
         catch (StoreFlushException sfe) when (sfe.IsDeterministic)
         {
@@ -442,6 +445,7 @@ public sealed class FlushPump(
             try
             {
                 await store.StoreFlushAsync(groupRows, ct);
+                await PublishCommittedAsync(group.Select(t=> t.Row).ToList(), ct);
                 foreach (var t in group) landed.Add(t.Index);
                 continue;
             }
@@ -467,6 +471,7 @@ public sealed class FlushPump(
                 try
                 {
                     await store.StoreFlushAsync([ToDto(t.Row)], ct);
+                    await PublishCommittedAsync([t.Row], ct);
                     landed.Add(t.Index);
                 }
                 catch (OperationCanceledException)
@@ -708,5 +713,21 @@ public sealed class FlushPump(
         public PendingDelivery Entry { get; } = entry;
         public IReadOnlyList<NormalizedReading> Rows { get; } = rows;
         public IReadOnlyList<string> Warnings { get; } = warnings;
+    }
+
+    /// <summary>
+    /// P4 spec 04: publish the COMMITTED batches — one per (tenant, device) — only
+    /// after the store returned. Awaited per subscription so each device's readings
+    /// reach the engine in order; the bus itself never lets a subscriber throw
+    /// into this path (the commit already happened).
+    /// </summary>
+    private async Task PublishCommittedAsync(IReadOnlyList<NormalizedReading> rows, CancellationToken ct)
+    {
+        foreach (var group in rows.GroupBy(r => (r.TenantId, r.DeviceId)))
+            await bus.PublishAsync(new CommittedBatch(
+                group.Key.TenantId,
+                group.Key.DeviceId,
+                group.Select(r => new CommittedReading(r.DeviceId, r.ChannelKey, r.Value, r.TimeUtc))
+                     .ToList()), ct);
     }
 }
