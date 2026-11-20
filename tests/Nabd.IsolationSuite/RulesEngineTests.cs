@@ -24,6 +24,9 @@ using Xunit;
 //   4. stragglers (older than last-evaluated / the 60 s watermark) never re-trigger
 //   5. a restart mid-episode keeps violating_since — the clock survives
 //   6. state WRITES == transitions (+ checkpoints), never per reading (§3.4)
+//   7. the checkpoint persists then reloads the rule set (CRUD reaches the engine)
+//   8. the `fired` flag survives a checkpoint reload — no ghost crossing (0024)
+//   9. a restart AFTER firing still auto-resolves on the first normal reading (0024)
 //
 // Evaluation is driven by a `CommittedBatch` — the type the flush pump publishes
 // only AFTER its INSERT commits (study step 2). The engine never sees a reading
@@ -151,6 +154,17 @@ public sealed class RulesEngineTests(PostgresFixture pg) : IClassFixture<Postgre
         if (!await reader.ReadAsync()) return ("", null);
         return (reader.GetString(0),
             reader.IsDBNull(1) ? null : reader.GetFieldValue<DateTimeOffset>(1));
+    }
+
+    /// <summary>The durable half of fact 8/9: the episode's fired flag lives in the row,
+    /// so a reload or a new process cannot forget that this alert was already raised.</summary>
+    private async Task<bool> ReadFiredAsync(Guid ruleId)
+    {
+        await using var conn = await pg.Owner.OpenConnectionAsync();
+        await using var cmd = new NpgsqlCommand(
+            "SELECT fired FROM rules.rule_eval_state WHERE rule_id = @r;", conn);
+        cmd.Parameters.AddWithValue("r", ruleId);
+        return (bool)(await cmd.ExecuteScalarAsync())!;
     }
 
     // ---- fact 1 — duration is the noise killer: a spike that clears never fires ----
@@ -332,5 +346,64 @@ public sealed class RulesEngineTests(PostgresFixture pg) : IClassFixture<Postgre
         await engine.EvaluateBatchAsync(Batch(tenant, device, T0.AddSeconds(120), 5.0));
         Assert.Equal(evaluatedBefore + 2, engine.Evaluated);
         Assert.Empty(rec.Crossings);
+    }
+
+    // ---- fact 8 — the fired flag survives a checkpoint reload (0024) --------------
+
+    [Fact]
+    public async Task the_fired_flag_survives_a_checkpoint_reload()
+    {
+        var (tenant, device, ruleId) = await FreshAsync("fired-checkpoint");
+        var rec = new Recorder(new InProcessEventBus());
+        var engine = new RulesEngine(pg.Rules, rec.Bus, NullLogger<RulesEngine>.Instance);
+
+        await engine.EvaluateBatchAsync(Batch(tenant, device, T0, 10.0));
+        await engine.EvaluateBatchAsync(Batch(tenant, device, T0.AddSeconds(61), 10.0));
+        Assert.Single(rec.Crossings);
+
+        // the crossing's write carries fired=true — the row, not the cache, is the truth
+        Assert.True(await ReadFiredAsync(ruleId),
+            "the crossing must persist fired=true in rules.rule_eval_state");
+
+        // the 60 s checkpoint persists and EVICTS the cache (plan/06 §3.4)
+        await engine.CheckpointAsync();
+
+        // same episode, still violating: the reloaded state must remember it fired.
+        // Without the flag this reading re-published CrossingDetected (the 60 s ghosts
+        // seen in the spec 06 drill at 17:42:26 and 17:43:26).
+        await engine.EvaluateBatchAsync(Batch(tenant, device, T0.AddSeconds(120), 10.0));
+
+        Assert.Single(rec.Crossings);   // one real crossing, no ghost from the reload
+        Assert.Empty(rec.Restored);
+        Assert.True(await ReadFiredAsync(ruleId));
+    }
+
+    // ---- fact 9 — a restart after firing still auto-resolves on return (0024) -----
+
+    [Fact]
+    public async Task a_restart_after_firing_still_resolves_on_the_first_normal_reading()
+    {
+        var (tenant, device, ruleId) = await FreshAsync("fired-restart");
+        var rec = new Recorder(new InProcessEventBus());
+
+        var first = new RulesEngine(pg.Rules, rec.Bus, NullLogger<RulesEngine>.Instance);
+        await first.EvaluateBatchAsync(Batch(tenant, device, T0, 10.0));
+        await first.EvaluateBatchAsync(Batch(tenant, device, T0.AddSeconds(61), 10.0));
+        Assert.Single(rec.Crossings);
+        first.Dispose();   // the process dies with the episode ON and the alert OPEN
+
+        Assert.True(await ReadFiredAsync(ruleId),
+            "the fired flag must be durable before the restart matters");
+
+        // new process, first reading back inside range — no violating reading in
+        // between, so the durable flag is the ONLY evidence that this episode fired.
+        // Without it the engine stays silent and the open alert never resolves
+        // (the deterministic 17:38:31 restart in the spec 06 drill).
+        var second = new RulesEngine(pg.Rules, rec.Bus, NullLogger<RulesEngine>.Instance);
+        await second.EvaluateBatchAsync(Batch(tenant, device, T0.AddSeconds(120), 5.0));
+
+        Assert.Single(rec.Restored);    // §5.3: the OPEN alert auto-resolves
+        Assert.Equal(ruleId, rec.Restored[0].Rule.RuleId);
+        second.Dispose();
     }
 }
