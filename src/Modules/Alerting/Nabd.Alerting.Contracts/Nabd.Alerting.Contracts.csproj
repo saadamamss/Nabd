@@ -3,6 +3,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\..\SharedKernel\Nabd.SharedKernel\Nabd.SharedKernel.csproj" />
     <ProjectReference Include="..\..\Identity\Nabd.Identity.Contracts\Nabd.Identity.Contracts.csproj" />
+    <ProjectReference Include="..\..\Rules\Nabd.Rules.Contracts\Nabd.Rules.Contracts.csproj" />
   </ItemGroup>
 
   <PropertyGroup>

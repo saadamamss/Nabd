@@ -10,7 +10,7 @@ using Nabd.TelemetryStore.Contracts;
 namespace Nabd.Alerting;
 
 /// <summary>What the raise path did — the lifecycle publishes only for the first two.</summary>
-public enum AlertRaiseOutcome { Opened, Reraised, Deduplicated, Suppressed }
+public enum AlertRaiseOutcome { Opened, Reraised, Deduplicated, Suppressed, Muted }
 
 public sealed record AlertRaiseResult(AlertRaiseOutcome Outcome, AlertSnapshot Alert);
 
@@ -275,6 +275,18 @@ public sealed class AlertService(AlertingDb db) : IAlerting
                     AlertTypes.Threshold, rule.Severity, AlertStatuses.Open,
                     at, null, null, null, titleEn, titleAr, detail);
 
+                // plan/06 §5.4 (D6d): the row STILL opens — the story stays visible in
+                // history — but a crossing inside a mute window notifies nobody. The
+                // decision uses the rule's windows AT FIRE TIME, on event time.
+                if (MuteDecision.ShouldMute(AlertTypes.Threshold, rule.MuteWindows, at))
+                {
+                    await InsertEventAsync(conn, tx, rule.TenantId, id,
+                        "suppressed", null, "mute_window", detailJson, at, ct);
+                    await tx.CommitAsync(ct);
+                    return Result<AlertRaiseResult>.Success(
+                        new AlertRaiseResult(AlertRaiseOutcome.Muted, snapshot));
+                }
+
                 await tx.CommitAsync(ct);
                 return Result<AlertRaiseResult>.Success(
                     new AlertRaiseResult(AlertRaiseOutcome.Opened, snapshot));
@@ -331,12 +343,9 @@ public sealed class AlertService(AlertingDb db) : IAlerting
             }
             await InsertEventAsync(conn, tx, rule.TenantId, existing.AlertId,
                 "reopened", null, null, detailJson, at, ct);
-            await tx.CommitAsync(ct);
 
-            return Result<AlertRaiseResult>.Success(new AlertRaiseResult(
-                AlertRaiseOutcome.Reraised,
-                existing with
-                {
+            var reopened = existing with
+            {
                     Status = AlertStatuses.Open,
                     OpenedAt = at,
                     ResolvedAt = null,
@@ -345,7 +354,21 @@ public sealed class AlertService(AlertingDb db) : IAlerting
                     TitleEn = titleEn,
                     TitleAr = titleAr,
                     Detail = detail,
-                }));
+                };
+
+            // spec 06 (D6e): a window silences the fan-out — never the state machine.
+            if (MuteDecision.ShouldMute(AlertTypes.Threshold, rule.MuteWindows, at))
+            {
+                await InsertEventAsync(conn, tx, rule.TenantId, existing.AlertId,
+                    "suppressed", null, "mute_window", detailJson, at, ct);
+                await tx.CommitAsync(ct);
+                return Result<AlertRaiseResult>.Success(
+                    new AlertRaiseResult(AlertRaiseOutcome.Muted, reopened));
+            }
+
+            await tx.CommitAsync(ct);
+            return Result<AlertRaiseResult>.Success(
+                new AlertRaiseResult(AlertRaiseOutcome.Reraised, reopened));
         }
         catch
         {

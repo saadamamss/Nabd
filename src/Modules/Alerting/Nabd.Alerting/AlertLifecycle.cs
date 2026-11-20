@@ -27,6 +27,7 @@ public sealed class AlertLifecycle : IDisposable
     private long _deduplicated;
     private long _suppressed;
     private long _resolved;
+    private long _muted;
 
     public AlertLifecycle(AlertService alerts, IEventBus bus, ILogger<AlertLifecycle> logger)
     {
@@ -42,6 +43,8 @@ public sealed class AlertLifecycle : IDisposable
     public long Deduplicated => Interlocked.Read(ref _deduplicated);
     public long Suppressed => Interlocked.Read(ref _suppressed);
     public long Resolved => Interlocked.Read(ref _resolved);
+    /// <summary>Observability: crossings recorded but deliberately not published (§5.4).</summary>
+    public long Muted => Interlocked.Read(ref _muted);
 
     public void Dispose()
     {
@@ -80,6 +83,9 @@ public sealed class AlertLifecycle : IDisposable
 
                 case AlertRaiseOutcome.Suppressed:
                     Interlocked.Increment(ref _suppressed);
+                    break;
+                case AlertRaiseOutcome.Muted:
+                    Interlocked.Increment(ref _muted);   // the row + its event are the record
                     break;
             }
         }

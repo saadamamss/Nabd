@@ -261,6 +261,34 @@ public sealed class RulesEngine : IDisposable
                     });
                 }
             }
+
+            // spec 06 (D6d): the snapshot travels with its windows — Alerting never
+            // reads the rules schema, and the decision uses the state AT FIRE TIME.
+            var windows = new Dictionary<Guid, List<MuteWindow>>();
+            await using (var w = new NpgsqlCommand("""
+                SELECT w.rule_id, w.day_of_week, w.start_minute, w.end_minute
+                FROM rules.mute_windows w
+                JOIN rules.rules r ON r.id = w.rule_id
+                WHERE r.device_id = @d
+                ORDER BY w.day_of_week, w.start_minute
+                """, conn, tx))
+            {
+                w.Parameters.AddWithValue("d", deviceId);
+                await using var reader = await w.ExecuteReaderAsync(ct);
+                while (await reader.ReadAsync(ct))
+                {
+                    var id = reader.GetGuid(0);
+                    if (!windows.TryGetValue(id, out var set)) windows[id] = set = [];
+                    set.Add(new MuteWindow(reader.GetInt16(1), reader.GetInt16(2), reader.GetInt16(3)));
+                }
+            }
+
+            foreach (var state in list)
+                state.Rule = state.Rule with
+                {
+                    MuteWindows = windows.TryGetValue(state.Rule.RuleId, out var set) ? set : [],
+                };
+
             await tx.CommitAsync(ct);
         }
         catch
@@ -283,7 +311,7 @@ public sealed class RulesEngine : IDisposable
 
     private sealed class RuleState
     {
-        public required RuleSnapshot Rule { get; init; }
+        public required RuleSnapshot Rule { get; set; }
         public bool Violating { get; set; }
         public DateTimeOffset? ViolatingSince { get; set; }
         public DateTimeOffset? LastEvaluated { get; set; }
