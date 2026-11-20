@@ -11,8 +11,9 @@ namespace Nabd.Rules;
 /// NORMAL ⇄ VIOLATING(violating_since); duration_seconds is the noise killer;
 /// one CrossingDetected per episode; restore re-arms. State lives in memory and
 /// reaches Postgres ONLY on transitions + the 60 s checkpoint (§3.4) — never
-/// per reading. Stragglers below the batch watermark or below last_evaluated
-/// are history-only (§3.3).
+/// per reading. `fired` is part of that row (0024): a checkpoint reload or a
+/// restart keeps the episode's memory instead of re-arming silently. Stragglers
+/// below the batch watermark or below last_evaluated are history-only (§3.3).
 /// </summary>
 public sealed class RulesEngine : IDisposable
 {
@@ -188,17 +189,19 @@ public sealed class RulesEngine : IDisposable
             foreach (var state in states)
             {
                 await using var cmd = new NpgsqlCommand("""
-                    INSERT INTO rules.rule_eval_state (rule_id, last_state, violating_since, last_evaluated_at)
-                    VALUES (@r, @ls, @vs, @le)
+                    INSERT INTO rules.rule_eval_state (rule_id, last_state, violating_since, last_evaluated_at, fired)
+                    VALUES (@r, @ls, @vs, @le, @f)
                     ON CONFLICT (rule_id) DO UPDATE SET
                         last_state = EXCLUDED.last_state,
                         violating_since = EXCLUDED.violating_since,
-                        last_evaluated_at = EXCLUDED.last_evaluated_at
+                        last_evaluated_at = EXCLUDED.last_evaluated_at,
+                        fired = EXCLUDED.fired
                     """, conn, tx);
                 cmd.Parameters.AddWithValue("r", state.Rule.RuleId);
                 cmd.Parameters.AddWithValue("ls", state.Violating ? "violating" : "normal");
                 cmd.Parameters.AddWithValue("vs", (object?)state.ViolatingSince?.UtcDateTime ?? DBNull.Value);
                 cmd.Parameters.AddWithValue("le", (state.LastEvaluated ?? DateTimeOffset.UtcNow).UtcDateTime);
+                cmd.Parameters.AddWithValue("f", state.Fired);
                 await cmd.ExecuteNonQueryAsync(ct);
             }
             await tx.CommitAsync(ct);
@@ -234,7 +237,7 @@ public sealed class RulesEngine : IDisposable
                 SELECT r.id, r.tenant_id, r.device_id, r.channel_key, r.rule_type,
                        r.threshold_low, r.threshold_high, r.duration_seconds,
                        r.cooldown_minutes, r.severity, r.enabled,
-                       s.last_state, s.violating_since, s.last_evaluated_at
+                       s.last_state, s.violating_since, s.last_evaluated_at, s.fired
                 FROM rules.rules r
                 LEFT JOIN rules.rule_eval_state s ON s.rule_id = r.id
                 WHERE r.device_id = @d AND r.enabled
@@ -258,6 +261,9 @@ public sealed class RulesEngine : IDisposable
                         Violating = !reader.IsDBNull(11) && reader.GetString(11) == "violating",
                         ViolatingSince = reader.IsDBNull(12) ? null : reader.GetFieldValue<DateTimeOffset>(12),
                         LastEvaluated = reader.IsDBNull(13) ? null : reader.GetFieldValue<DateTimeOffset>(13),
+                        // 0024: the durable half of the episode — a reload must not re-arm
+                        // a crossing that already fired, nor forget it when the restore arrives.
+                        Fired = !reader.IsDBNull(14) && reader.GetBoolean(14),
                     });
                 }
             }

@@ -125,7 +125,9 @@ public sealed class RulesWallTests(PostgresFixture pg) : IClassFixture<PostgresF
             "threshold_low", "threshold_high", "duration_seconds",
             "cooldown_minutes", "severity", "enabled"], columns["rules"]);
         Assert.Equal(
-            ["rule_id", "last_state", "violating_since", "last_evaluated_at"], columns["rule_eval_state"]);
+            // 0024 added `fired` (the episode's durable memory) — the wall test must
+            // see the real shape, so the amendment is recorded here deliberately.
+            ["rule_id", "last_state", "violating_since", "last_evaluated_at", "fired"], columns["rule_eval_state"]);
     }
 
     // ---- fact 2 — the RLS wall: fail-shut, cross-tenant invisible ------------
