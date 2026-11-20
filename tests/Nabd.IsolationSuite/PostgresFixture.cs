@@ -6,6 +6,7 @@ using Nabd.Admin;
 using Nabd.Assets;
 using Nabd.Rules;
 using Nabd.Alerting;
+using Nabd.TelemetryStore;
 
 namespace Nabd.IsolationSuite;
 
@@ -42,6 +43,10 @@ public sealed class PostgresFixture : IAsyncLifetime
 
     /// <summary>Alerting lane — the room's own DB door (P4 spec 05), same app identity.</summary>
     public AlertingDb Alerts { get; private set; } = null!;
+
+    /// <summary>TelemetryStore lane — the presence tracker's door (P4 spec 07 needs it:
+    /// the watchdog reads in-memory last-seen and the device_status baseline).</summary>
+    public TelemetryStoreDb Telemetry { get; private set; } = null!;
 
     public async Task InitializeAsync()
     {
@@ -167,10 +172,13 @@ public sealed class PostgresFixture : IAsyncLifetime
         Rules = new RulesDb();
         // the Alerting room's DB door — same env vars, same fail-shut shape (P4 spec 05)
         Alerts = new AlertingDb();
+        // the TelemetryStore room's DB door — the presence tracker/baseline (P4 spec 07)
+        Telemetry = new TelemetryStoreDb();
     }
 
     public async Task DisposeAsync()
     {
+        Telemetry.Dispose();
         await Owner.DisposeAsync();
         await _container.DisposeAsync();
     }

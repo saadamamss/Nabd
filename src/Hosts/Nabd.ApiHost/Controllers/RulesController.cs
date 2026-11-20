@@ -13,7 +13,8 @@ public sealed record CreateRuleJson(
 public sealed record UpdateRuleJson(
     double? ThresholdLow, double? ThresholdHigh,
     int? DurationSeconds, int? CooldownMinutes, string? Severity, bool? Enabled,
-    IReadOnlyList<MuteWindow>? MuteWindows = null);
+    IReadOnlyList<MuteWindow>? MuteWindows = null,
+    int? OfflineAfterMinutes = null);
 
 [ApiController]
 public sealed class RulesController(IDeviceRules rules) : ControllerBase
@@ -59,7 +60,7 @@ public sealed class RulesController(IDeviceRules rules) : ControllerBase
         var result = await rules.UpdateRuleAsync(caller, deviceId, ruleId,
             new RuleUpdateRequest(body.ThresholdLow, body.ThresholdHigh,
                 body.DurationSeconds, body.CooldownMinutes, body.Severity, body.Enabled,
-                body.MuteWindows), ct);
+                body.MuteWindows, body.OfflineAfterMinutes), ct);
 
         return result.IsSuccess ? Ok(result.Value) : Translate(result.Error!);
     }

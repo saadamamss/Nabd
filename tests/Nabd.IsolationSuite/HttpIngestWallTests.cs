@@ -437,5 +437,7 @@ public sealed class HttpIngestWallTests : IClassFixture<PostgresFixture>
     private sealed class SilentTracker : IDeviceStatusTracker
     {
         public Task MarkSeenAsync(Guid deviceId, Guid tenantId, DateTimeOffset lastSeenUtc, DateTimeOffset lastEventTimeUtc, CancellationToken ct = default) => Task.CompletedTask;
+
+        public DateTimeOffset? LastSeen(Guid deviceId) => null;   // spec 07's read side
     }
 }

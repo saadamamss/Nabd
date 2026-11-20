@@ -44,4 +44,16 @@ public sealed class RulesDb
         await cmd.ExecuteNonQueryAsync(ct);
         return (conn, tx);
     }
+
+    /// <summary>
+    /// The watchdog's lane (P4 spec 07): no tenant GUC — its reads go through the
+    /// 0025 SECURITY DEFINER window (one fixed SQL), and rules.rule_eval_state has
+    /// no RLS by design (0021: its protection is the GRANT shape). This is NOT a
+    /// general-purpose door: tenant-scoped work still uses OpenTenantScopeAsync.
+    /// </summary>
+    public async Task<NpgsqlConnection> OpenPreAuthConnectionAsync(CancellationToken ct = default)
+    {
+        var conn = await _dataSource.OpenConnectionAsync(ct);
+        return conn;
+    }
 }

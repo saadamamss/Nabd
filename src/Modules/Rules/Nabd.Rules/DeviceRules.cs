@@ -107,7 +107,7 @@ public sealed class DeviceRules(RulesDb db) : IDeviceRules
             await using (var cmd = new NpgsqlCommand("""
                 SELECT id, tenant_id, device_id, channel_key, rule_type,
                        threshold_low, threshold_high, duration_seconds,
-                       cooldown_minutes, severity, enabled
+                       cooldown_minutes, severity, enabled, offline_after_minutes
                 FROM rules.rules WHERE device_id = @d
                 ORDER BY channel_key NULLS LAST, rule_type
                 """, conn, tx))
@@ -171,10 +171,25 @@ public sealed class DeviceRules(RulesDb db) : IDeviceRules
             return Result<RuleSnapshot>.Failure(RuleErrors.InvalidRule);
         if (request.MuteWindows is { } windows && ValidateWindows(windows) is { } windowError)
             return Result<RuleSnapshot>.Failure(windowError);
+        if (request.OfflineAfterMinutes is < 1)
+            return Result<RuleSnapshot>.Failure(RuleErrors.InvalidRule);
 
         var (conn, tx) = await db.OpenTenantScopeAsync(acting.TenantId, ct);
         try
         {
+            if (request.OfflineAfterMinutes is not null)
+            {
+                await using var typeCmd = new NpgsqlCommand(
+                    "SELECT rule_type FROM rules.rules WHERE id = @r AND device_id = @d", conn, tx);
+                typeCmd.Parameters.AddWithValue("r", ruleId);
+                typeCmd.Parameters.AddWithValue("d", deviceId);
+                var ruleType = await typeCmd.ExecuteScalarAsync(ct) as string;
+                if (ruleType is null)
+                    return Result<RuleSnapshot>.Failure(RuleErrors.RuleNotFound);   // RLS hid it or absent
+                if (ruleType != "offline")
+                    return Result<RuleSnapshot>.Failure(RuleErrors.InvalidRule);   // D7c: no dead field
+            }
+
             // COALESCE: only the PRESENT legs move; identity legs never do (PATCH)
             await using (var upd = new NpgsqlCommand("""
                 UPDATE rules.rules SET
@@ -183,7 +198,8 @@ public sealed class DeviceRules(RulesDb db) : IDeviceRules
                     duration_seconds = COALESCE(@dur, duration_seconds),
                     cooldown_minutes = COALESCE(@cool, cooldown_minutes),
                     severity         = COALESCE(@sev, severity),
-                    enabled          = COALESCE(@en, enabled)
+                    enabled          = COALESCE(@en, enabled),
+                    offline_after_minutes = COALESCE(@after, offline_after_minutes)
                 WHERE id = @r AND device_id = @d
                 """, conn, tx))
             {
@@ -195,6 +211,7 @@ public sealed class DeviceRules(RulesDb db) : IDeviceRules
                 upd.Parameters.AddWithValue("cool", (object?)request.CooldownMinutes ?? DBNull.Value);
                 upd.Parameters.AddWithValue("sev", (object?)request.Severity ?? DBNull.Value);
                 upd.Parameters.AddWithValue("en", (object?)request.Enabled ?? DBNull.Value);
+                upd.Parameters.AddWithValue("after", (object?)request.OfflineAfterMinutes ?? DBNull.Value);
                 if (await upd.ExecuteNonQueryAsync(ct) == 0)
                     return Result<RuleSnapshot>.Failure(RuleErrors.RuleNotFound);   // RLS hid it or absent
             }
@@ -327,7 +344,7 @@ public sealed class DeviceRules(RulesDb db) : IDeviceRules
         await using (var cmd = new NpgsqlCommand("""
             SELECT id, tenant_id, device_id, channel_key, rule_type,
                    threshold_low, threshold_high, duration_seconds,
-                   cooldown_minutes, severity, enabled
+                   cooldown_minutes, severity, enabled, offline_after_minutes
             FROM rules.rules WHERE id = @r;
             """, conn, tx))
         {
@@ -364,5 +381,6 @@ public sealed class DeviceRules(RulesDb db) : IDeviceRules
         reader.GetInt32(7),
         reader.GetInt32(8),
         reader.GetString(9),
-        reader.GetBoolean(10));
+        reader.GetBoolean(10),
+        OfflineAfterMinutes: reader.GetInt32(11));
 }

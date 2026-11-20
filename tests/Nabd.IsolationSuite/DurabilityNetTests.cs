@@ -202,6 +202,9 @@ public sealed class DurabilityNetTests(PostgresFixture pg) : IClassFixture<Postg
             Marks.Add((deviceId, tenantId, lastSeenUtc, lastEventTimeUtc));
             return Task.CompletedTask;
         }
+
+        public DateTimeOffset? LastSeen(Guid deviceId) =>
+            Marks.Where(m => m.Device == deviceId).Select(m => (DateTimeOffset?)m.Seen).Max();
     }
 
     private sealed class AckRecorder

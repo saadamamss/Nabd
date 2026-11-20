@@ -46,7 +46,10 @@ public sealed record RuleSnapshot(
     bool Enabled,
     /// <summary>The rule's mute windows AT SNAPSHOT TIME (D6d) — null means "not loaded",
     /// never "none"; an empty list is a real "no windows".</summary>
-    IReadOnlyList<MuteWindow>? MuteWindows = null);
+    IReadOnlyList<MuteWindow>? MuteWindows = null,
+    /// <summary>Per-device silence window (plan/06 §4/§8, D7b): meaningful for `offline`
+    /// rules only; the column exists on every row (0025) with the §8 default 30.</summary>
+    int OfflineAfterMinutes = 30);
 
 /// <summary>POST body. Defaults ride plan/06 §8 (60 / 60 / warn / enabled).</summary>
 public sealed record RuleCreateRequest(
@@ -68,7 +71,9 @@ public sealed record RuleUpdateRequest(
     int? CooldownMinutes = null,
     string? Severity = null,
     bool? Enabled = null,
-    IReadOnlyList<MuteWindow>? MuteWindows = null);
+    IReadOnlyList<MuteWindow>? MuteWindows = null,
+    /// <summary>D7c: offline rules only; ≥ 1. null = untouched.</summary>
+    int? OfflineAfterMinutes = null);
 
 public static class RuleErrors
 {

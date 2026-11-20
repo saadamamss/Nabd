@@ -236,11 +236,12 @@ public sealed class RulesEngine : IDisposable
             await using (var cmd = new NpgsqlCommand("""
                 SELECT r.id, r.tenant_id, r.device_id, r.channel_key, r.rule_type,
                        r.threshold_low, r.threshold_high, r.duration_seconds,
-                       r.cooldown_minutes, r.severity, r.enabled,
+                       r.cooldown_minutes, r.severity, r.enabled, r.offline_after_minutes,
                        s.last_state, s.violating_since, s.last_evaluated_at, s.fired
                 FROM rules.rules r
                 LEFT JOIN rules.rule_eval_state s ON s.rule_id = r.id
                 WHERE r.device_id = @d AND r.enabled
+                AND r.channel_key IS NOT NULL   -- offline rules belong to the watchdog only
                 ORDER BY r.channel_key, r.rule_type
                 """, conn, tx))
             {
@@ -251,19 +252,18 @@ public sealed class RulesEngine : IDisposable
                     list.Add(new RuleState
                     {
                         Rule = new RuleSnapshot(
-                            reader.GetGuid(0), reader.GetGuid(1), reader.GetGuid(2),
-                            reader.IsDBNull(3) ? null : reader.GetString(3),
-                            reader.GetString(4),
-                            reader.IsDBNull(5) ? null : reader.GetDouble(5),
-                            reader.IsDBNull(6) ? null : reader.GetDouble(6),
-                            reader.GetInt32(7), reader.GetInt32(8),
-                            reader.GetString(9), reader.GetBoolean(10)),
-                        Violating = !reader.IsDBNull(11) && reader.GetString(11) == "violating",
-                        ViolatingSince = reader.IsDBNull(12) ? null : reader.GetFieldValue<DateTimeOffset>(12),
-                        LastEvaluated = reader.IsDBNull(13) ? null : reader.GetFieldValue<DateTimeOffset>(13),
-                        // 0024: the durable half of the episode — a reload must not re-arm
-                        // a crossing that already fired, nor forget it when the restore arrives.
-                        Fired = !reader.IsDBNull(14) && reader.GetBoolean(14),
+                        reader.GetGuid(0), reader.GetGuid(1), reader.GetGuid(2),
+                        reader.IsDBNull(3) ? null : reader.GetString(3),
+                        reader.GetString(4),
+                        reader.IsDBNull(5) ? null : reader.GetDouble(5),
+                        reader.IsDBNull(6) ? null : reader.GetDouble(6),
+                        reader.GetInt32(7), reader.GetInt32(8),
+                        reader.GetString(9), reader.GetBoolean(10),
+                        OfflineAfterMinutes: reader.GetInt32(11)),
+                        Violating = !reader.IsDBNull(12) && reader.GetString(12) == "violating",
+                        ViolatingSince = reader.IsDBNull(13) ? null : reader.GetFieldValue<DateTimeOffset>(13),
+                        LastEvaluated = reader.IsDBNull(14) ? null : reader.GetFieldValue<DateTimeOffset>(14),
+                        Fired = !reader.IsDBNull(15) && reader.GetBoolean(15),
                     });
                 }
             }

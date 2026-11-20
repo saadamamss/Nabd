@@ -13,6 +13,11 @@ public sealed class DeviceStatusTracker(TelemetryStoreDb db) : IDeviceStatusTrac
 {
     private readonly ConcurrentDictionary<Guid, (Guid Tenant, DateTimeOffset Seen, DateTimeOffset Event)> _buffer = new();
 
+    // P4 spec 07 (plan/04 §6): the process's permanent memory of last words. The
+    // flush clears _buffer only — this map is what keeps the flush cadence out of
+    // the detection budget. Bounded by the fleet, not by the stream.
+    private readonly ConcurrentDictionary<Guid, DateTimeOffset> _lastSeen = new();
+
     /// <summary>How many window edges have flushed (the "two windows → two flushes" fact reads this).</summary>
     public int FlushCount { get; private set; }
 
@@ -23,8 +28,17 @@ public sealed class DeviceStatusTracker(TelemetryStoreDb db) : IDeviceStatusTrac
         _buffer.AddOrUpdate(deviceId,
             _ => (tenantId, lastSeenUtc, lastEventTimeUtc),
             (_, prev) => lastSeenUtc > prev.Seen ? (tenantId, lastSeenUtc, lastEventTimeUtc) : prev);
+
+        _lastSeen.AddOrUpdate(deviceId,
+            lastSeenUtc,
+            (_, prev) => lastSeenUtc > prev ? lastSeenUtc : prev);
         return Task.CompletedTask;
     }
+
+    /// <summary>P4 spec 07: the watchdog's in-memory truth between flushes. FlushNowAsync
+    /// clears the WRITE buffer only; this map is the process's memory of last words.</summary>
+    public DateTimeOffset? LastSeen(Guid deviceId) =>
+        _lastSeen.TryGetValue(deviceId, out var seen) ? seen : null;
 
     /// <summary>One window edge: pay the DB once for everything buffered, clear, count.</summary>
     public async Task FlushNowAsync(CancellationToken ct = default)

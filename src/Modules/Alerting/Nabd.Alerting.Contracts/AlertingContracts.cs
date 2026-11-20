@@ -86,12 +86,23 @@ public static class MuteDecision
 /// copied at the moment of the crossing (a later PATCH must not rewrite history).
 /// </summary>
 public sealed record AlertDetail(
-    double Value,
-    string ChannelKey,
+    double? Value,
+    string? ChannelKey,
     string RuleType,
     double? ThresholdLow,
     double? ThresholdHigh,
-    Guid DeviceId);
+    Guid DeviceId,
+    /// <summary>Offline alerts only: the silence in minutes (plan/06 §4/§5.3).</summary>
+    double? OfflineGapMinutes = null,
+    /// <summary>Offline alerts only: the last moment the device was heard.</summary>
+    DateTimeOffset? LastSeenAtUtc = null);
+
+/// <summary>Resolution reasons — one home per string (lesson #16: naked strings rot).</summary>
+public static class AlertReasons
+{
+    public const string ConditionRestored = "condition_restored";
+    public const string DeviceOnlineRestored = "device_online_restored";
+}
 
 /// <summary>One alert row, as the doors and the fan-out see it (plan/04 §8).</summary>
 public sealed record AlertSnapshot(
