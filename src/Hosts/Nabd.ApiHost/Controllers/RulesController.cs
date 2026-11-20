@@ -12,7 +12,8 @@ public sealed record CreateRuleJson(
 
 public sealed record UpdateRuleJson(
     double? ThresholdLow, double? ThresholdHigh,
-    int? DurationSeconds, int? CooldownMinutes, string? Severity, bool? Enabled);
+    int? DurationSeconds, int? CooldownMinutes, string? Severity, bool? Enabled,
+    IReadOnlyList<MuteWindow>? MuteWindows = null);
 
 [ApiController]
 public sealed class RulesController(IDeviceRules rules) : ControllerBase
@@ -57,7 +58,8 @@ public sealed class RulesController(IDeviceRules rules) : ControllerBase
 
         var result = await rules.UpdateRuleAsync(caller, deviceId, ruleId,
             new RuleUpdateRequest(body.ThresholdLow, body.ThresholdHigh,
-                body.DurationSeconds, body.CooldownMinutes, body.Severity, body.Enabled), ct);
+                body.DurationSeconds, body.CooldownMinutes, body.Severity, body.Enabled,
+                body.MuteWindows), ct);
 
         return result.IsSuccess ? Ok(result.Value) : Translate(result.Error!);
     }
@@ -79,6 +81,7 @@ public sealed class RulesController(IDeviceRules rules) : ControllerBase
         RuleErrors.DeviceNotFound or RuleErrors.RuleNotFound
             => NotFound(new { code = error }),
         RuleErrors.OfflineRefused or RuleErrors.DuplicateRule or RuleErrors.InvalidRule
+            or RuleErrors.InvalidMuteWindow or RuleErrors.MuteWindowOverlap
             => UnprocessableEntity(new { code = error }),
         _ => BadRequest(new { code = error }),
     };

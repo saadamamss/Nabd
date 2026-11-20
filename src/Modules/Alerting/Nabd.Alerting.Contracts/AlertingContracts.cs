@@ -1,6 +1,7 @@
 namespace Nabd.Alerting.Contracts;
 
 using Nabd.Identity.Contracts;
+using Nabd.Rules.Contracts;
 using Nabd.SharedKernel;
 
 /// <summary>The three states of plan/06 §5.1 — one vocabulary, one home.</summary>
@@ -26,6 +27,57 @@ public static class AlertTypes
 {
     public const string Threshold = "threshold";
     public const string Offline = "offline";
+}
+
+/// <summary>plan/06 §6 — exactly three channels at MVP.</summary>
+public static class AlertChannels
+{
+    public const string Dashboard = "dashboard";
+    public const string Email = "email";
+    public const string Telegram = "telegram";
+}
+
+/// <summary>
+/// plan/06 §6, verbatim: info → dashboard only · warn → all three · critical →
+/// email + Telegram (cooldown halved elsewhere). An unknown severity THROWS:
+/// a severity without a routing row is a bug, never a silent fall-through.
+/// Specs 08/09 (Notifications) consume this table; 06 pins it.
+/// </summary>
+public static class ChannelRouting
+{
+    public static IReadOnlyList<string> ChannelsFor(string severity) => severity switch
+    {
+        AlertSeverities.Info => [AlertChannels.Dashboard],
+        AlertSeverities.Warn => [AlertChannels.Dashboard, AlertChannels.Email, AlertChannels.Telegram],
+        AlertSeverities.Critical => [AlertChannels.Email, AlertChannels.Telegram],
+        _ => throw new ArgumentOutOfRangeException(
+            nameof(severity), severity, "severity without a routing row (plan/06 §6)"),
+    };
+}
+
+/// <summary>
+/// plan/06 §5.4 as a pure law (D6d): a threshold crossing inside a weekly UTC
+/// window is muted — START inclusive / END exclusive. OFFLINE IS NEVER MUTED:
+/// "offline detection always runs, so a faked maintenance window cannot hide a
+/// dead device." Spec 07 wires the offline path through this same function.
+/// </summary>
+public static class MuteDecision
+{
+    public static bool ShouldMute(
+        string alertType, IReadOnlyList<MuteWindow>? windows, DateTimeOffset at)
+    {
+        if (alertType != AlertTypes.Threshold) return false;   // the honesty sentence
+        if (windows is null || windows.Count == 0) return false;
+
+        var utc = at.ToUniversalTime();
+        var minute = utc.Hour * 60 + utc.Minute;
+
+        foreach (var w in windows)
+            if (w.DayOfWeek == (int)utc.DayOfWeek
+                && minute >= w.StartMinute && minute < w.EndMinute)
+                return true;
+        return false;
+    }
 }
 
 /// <summary>

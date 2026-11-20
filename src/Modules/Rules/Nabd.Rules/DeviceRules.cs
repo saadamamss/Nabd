@@ -116,6 +116,34 @@ public sealed class DeviceRules(RulesDb db) : IDeviceRules
                 await using var reader = await cmd.ExecuteReaderAsync(ct);
                 while (await reader.ReadAsync(ct)) list.Add(ReadRow(reader));
             }
+
+            // D6c: one query, then attach — a device has a handful of rules at most.
+            var windows = new Dictionary<Guid, List<MuteWindow>>();
+            await using (var w = new NpgsqlCommand("""
+                SELECT w.rule_id, w.day_of_week, w.start_minute, w.end_minute
+                FROM rules.mute_windows w
+                JOIN rules.rules r ON r.id = w.rule_id
+                WHERE r.device_id = @d
+                ORDER BY w.day_of_week, w.start_minute
+                """, conn, tx))
+            {
+                w.Parameters.AddWithValue("d", deviceId);
+                await using var reader = await w.ExecuteReaderAsync(ct);
+                while (await reader.ReadAsync(ct))
+                {
+                    var id = reader.GetGuid(0);
+                    if (!windows.TryGetValue(id, out var set)) windows[id] = set = [];
+                    set.Add(new MuteWindow(reader.GetInt16(1), reader.GetInt16(2), reader.GetInt16(3)));
+                }
+            }
+
+            list = list
+                .Select(r => r with
+                {
+                    MuteWindows = windows.TryGetValue(r.RuleId, out var set) ? set : [],
+                })
+                .ToList();
+
             await tx.CommitAsync(ct);
             return Result<IReadOnlyList<RuleSnapshot>>.Success(list);
         }
@@ -141,6 +169,8 @@ public sealed class DeviceRules(RulesDb db) : IDeviceRules
             return Result<RuleSnapshot>.Failure(RuleErrors.InvalidRule);
         if (request.DurationSeconds is < 1 || request.CooldownMinutes is < 0)
             return Result<RuleSnapshot>.Failure(RuleErrors.InvalidRule);
+        if (request.MuteWindows is { } windows && ValidateWindows(windows) is { } windowError)
+            return Result<RuleSnapshot>.Failure(windowError);
 
         var (conn, tx) = await db.OpenTenantScopeAsync(acting.TenantId, ct);
         try
@@ -167,6 +197,31 @@ public sealed class DeviceRules(RulesDb db) : IDeviceRules
                 upd.Parameters.AddWithValue("en", (object?)request.Enabled ?? DBNull.Value);
                 if (await upd.ExecuteNonQueryAsync(ct) == 0)
                     return Result<RuleSnapshot>.Failure(RuleErrors.RuleNotFound);   // RLS hid it or absent
+            }
+
+            // D6c: full replacement — null leaves the set alone, [] clears it.
+            if (request.MuteWindows is { } newWindows)
+            {
+                await using (var del = new NpgsqlCommand(
+                    "DELETE FROM rules.mute_windows WHERE rule_id = @r", conn, tx))
+                {
+                    del.Parameters.AddWithValue("r", ruleId);
+                    await del.ExecuteNonQueryAsync(ct);
+                }
+                foreach (var w in newWindows)
+                {
+                    await using var ins = new NpgsqlCommand("""
+                        INSERT INTO rules.mute_windows
+                            (tenant_id, rule_id, day_of_week, start_minute, end_minute)
+                        VALUES (@t, @r, @d, @s, @e)
+                        """, conn, tx);
+                    ins.Parameters.AddWithValue("t", acting.TenantId);
+                    ins.Parameters.AddWithValue("r", ruleId);
+                    ins.Parameters.AddWithValue("d", (short)w.DayOfWeek);
+                    ins.Parameters.AddWithValue("s", (short)w.StartMinute);
+                    ins.Parameters.AddWithValue("e", (short)w.EndMinute);
+                    await ins.ExecuteNonQueryAsync(ct);
+                }
             }
 
             // READ INSIDE THE TX (app.current_tenant is SET LOCAL — it dies at COMMIT)
@@ -242,19 +297,60 @@ public sealed class DeviceRules(RulesDb db) : IDeviceRules
         return await cmd.ExecuteScalarAsync(ct) is Guid id ? id : null;
     }
 
+    /// <summary>D6c: day 0–6 · 0 ≤ start &lt; end ≤ 1440 · ≤ 20 windows · no same-day overlap.
+    /// Returns the door error, or null when the set is lawful.</summary>
+    private static string? ValidateWindows(IReadOnlyList<MuteWindow> windows)
+    {
+        if (windows.Count > 20) return RuleErrors.InvalidMuteWindow;
+
+        foreach (var w in windows)
+            if (w.DayOfWeek is < 0 or > 6
+                || w.StartMinute < 0 || w.EndMinute > 1440
+                || w.StartMinute >= w.EndMinute)
+                return RuleErrors.InvalidMuteWindow;
+
+        foreach (var day in windows.GroupBy(w => w.DayOfWeek))
+        {
+            var ordered = day.OrderBy(w => w.StartMinute).ToList();
+            for (var i = 1; i < ordered.Count; i++)
+                if (ordered[i].StartMinute < ordered[i - 1].EndMinute)
+                    return RuleErrors.MuteWindowOverlap;
+        }
+
+        return null;
+    }
+
     private static async Task<RuleSnapshot> ReadOneAsync(
         NpgsqlConnection conn, NpgsqlTransaction tx, Guid ruleId, CancellationToken ct)
     {
-        await using var cmd = new NpgsqlCommand("""
+        RuleSnapshot row;
+        await using (var cmd = new NpgsqlCommand("""
             SELECT id, tenant_id, device_id, channel_key, rule_type,
                    threshold_low, threshold_high, duration_seconds,
                    cooldown_minutes, severity, enabled
             FROM rules.rules WHERE id = @r;
-            """, conn, tx);
-        cmd.Parameters.AddWithValue("r", ruleId);
-        await using var reader = await cmd.ExecuteReaderAsync(ct);
-        await reader.ReadAsync(ct);
-        return ReadRow(reader);
+            """, conn, tx))
+        {
+            cmd.Parameters.AddWithValue("r", ruleId);
+            await using var reader = await cmd.ExecuteReaderAsync(ct);
+            await reader.ReadAsync(ct);
+            row = ReadRow(reader);
+        }
+
+        var windows = new List<MuteWindow>();
+        await using (var w = new NpgsqlCommand("""
+            SELECT day_of_week, start_minute, end_minute
+            FROM rules.mute_windows WHERE rule_id = @r
+            ORDER BY day_of_week, start_minute
+            """, conn, tx))
+        {
+            w.Parameters.AddWithValue("r", ruleId);
+            await using var reader = await w.ExecuteReaderAsync(ct);
+            while (await reader.ReadAsync(ct))
+                windows.Add(new MuteWindow(reader.GetInt16(0), reader.GetInt16(1), reader.GetInt16(2)));
+        }
+
+        return row with { MuteWindows = windows };
     }
 
     private static RuleSnapshot ReadRow(NpgsqlDataReader reader) => new(
