@@ -219,13 +219,52 @@ public sealed class AlertService(AlertingDb db) : IAlerting
 
     // ===== the lifecycle machine (called by AlertLifecycle, never by a door) ==
 
-    /// <summary>
-    /// plan/06 §5.2 verbatim. Returns WHAT happened so the consumer knows whether
-    /// to notify; the row is committed before this method returns (no receipt
-    /// before the durable outcome — the publish happens in the consumer).
-    /// </summary>
-    public async Task<Result<AlertRaiseResult>> RaiseAsync(
+    /// <summary>plan/06 §5.2 — a threshold crossing (unchanged behaviour).</summary>
+    public Task<Result<AlertRaiseResult>> RaiseAsync(
         RuleSnapshot rule, CommittedReading reading, CancellationToken ct = default)
+    {
+        var detail = new AlertDetail(
+            reading.Value, reading.ChannelKey, rule.RuleType,
+            rule.ThresholdLow, rule.ThresholdHigh, rule.DeviceId);
+
+        return RaiseCoreAsync(
+            rule, AlertTypes.Threshold, detail, reading.TimeUtc,
+            assetName => BuildTitle(rule, reading, assetName),
+            muteCheck: true, ct);
+    }
+
+    /// <summary>plan/06 §4/§5.3 — an offline detection opens the same story thread,
+    /// type `offline`, muted NEVER (§5.4).</summary>
+    public Task<Result<AlertRaiseResult>> RaiseOfflineAsync(
+        RuleSnapshot rule, DateTimeOffset lastSeenAtUtc, DateTimeOffset detectedAtUtc,
+        CancellationToken ct = default)
+    {
+        var detail = new AlertDetail(
+            null, null, AlertTypes.Offline, null, null, rule.DeviceId,
+            OfflineGapMinutes: (detectedAtUtc - lastSeenAtUtc).TotalMinutes,
+            LastSeenAtUtc: lastSeenAtUtc);
+
+        return RaiseCoreAsync(
+            rule, AlertTypes.Offline, detail, detectedAtUtc,
+            assetName => ($"device offline since {lastSeenAtUtc:u} — {assetName}",
+                          $"الجهاز متوقف عن الإرسال منذ {lastSeenAtUtc:u} — {assetName}"),
+            muteCheck: false, ct);
+    }
+
+    /// <summary>
+    /// The one raise machine: threshold and offline differ only in type, detail,
+    /// title and whether a mute window may silence the fan-out. Returns WHAT
+    /// happened so the consumer knows whether to notify; the row is committed
+    /// before this method returns (no receipt before the durable outcome).
+    /// </summary>
+    private async Task<Result<AlertRaiseResult>> RaiseCoreAsync(
+        RuleSnapshot rule,
+        string type,
+        AlertDetail detail,
+        DateTimeOffset at,
+        Func<string, (string En, string Ar)> buildTitle,
+        bool muteCheck,
+        CancellationToken ct)
     {
         var (conn, tx) = await db.OpenTenantScopeAsync(rule.TenantId, ct);
         try
@@ -235,15 +274,11 @@ public sealed class AlertService(AlertingDb db) : IAlerting
             var asset = await ResolveAssetAsync(conn, tx, rule.DeviceId, ct);
             if (asset is null) return Result<AlertRaiseResult>.Failure(AlertErrors.AssetNotFound);
 
-            var detail = new AlertDetail(
-                reading.Value, reading.ChannelKey, rule.RuleType,
-                rule.ThresholdLow, rule.ThresholdHigh, rule.DeviceId);
             var detailJson = JsonSerializer.Serialize(detail, Json);
 
-            var (titleEn, titleAr) = BuildTitle(rule, reading, asset.Value.Name);
+            var (titleEn, titleAr) = buildTitle(asset.Value.Name);
             var titleJson = JsonSerializer.Serialize(new { En = titleEn, Ar = titleAr }, Json);
 
-            var at = reading.TimeUtc;   // event time: the moment the condition was observed
             var existing = await ReadForKeyForUpdateAsync(conn, tx, rule, asset.Value.AssetId, ct);
 
             // ---- none: a new alert opens and notifies ----------------------------
@@ -254,13 +289,14 @@ public sealed class AlertService(AlertingDb db) : IAlerting
                     INSERT INTO alerting.alerts
                         (id, tenant_id, asset_id, rule_id, type, severity, status,
                          opened_at, title, detail)
-                    VALUES (@id, @t, @a, @r, 'threshold', @sev, 'open', @at, @title::jsonb, @detail::jsonb)
+                    VALUES (@id, @t, @a, @r, @type, @sev, 'open', @at, @title::jsonb, @detail::jsonb)
                     """, conn, tx))
                 {
                     ins.Parameters.AddWithValue("id", id);
                     ins.Parameters.AddWithValue("t", rule.TenantId);
                     ins.Parameters.AddWithValue("a", asset.Value.AssetId);
                     ins.Parameters.AddWithValue("r", rule.RuleId);
+                    ins.Parameters.AddWithValue("type", type);
                     ins.Parameters.AddWithValue("sev", rule.Severity);
                     ins.Parameters.AddWithValue("at", at.UtcDateTime);
                     ins.Parameters.AddWithValue("title", titleJson);
@@ -278,7 +314,7 @@ public sealed class AlertService(AlertingDb db) : IAlerting
                 // plan/06 §5.4 (D6d): the row STILL opens — the story stays visible in
                 // history — but a crossing inside a mute window notifies nobody. The
                 // decision uses the rule's windows AT FIRE TIME, on event time.
-                if (MuteDecision.ShouldMute(AlertTypes.Threshold, rule.MuteWindows, at))
+                if (muteCheck && MuteDecision.ShouldMute(type, rule.MuteWindows, at))
                 {
                     await InsertEventAsync(conn, tx, rule.TenantId, id,
                         "suppressed", null, "mute_window", detailJson, at, ct);
@@ -316,7 +352,7 @@ public sealed class AlertService(AlertingDb db) : IAlerting
             }
 
             // ---- resolved: inside cooldown = suppress-but-log; spent = re-raise --
-            var elapsed = reading.TimeUtc - existing.ResolvedAt!.Value;
+            var elapsed = at - existing.ResolvedAt!.Value;
             if (elapsed < CooldownOf(rule))
             {
                 await InsertEventAsync(conn, tx, rule.TenantId, existing.AlertId,
@@ -357,7 +393,7 @@ public sealed class AlertService(AlertingDb db) : IAlerting
                 };
 
             // spec 06 (D6e): a window silences the fan-out — never the state machine.
-            if (MuteDecision.ShouldMute(AlertTypes.Threshold, rule.MuteWindows, at))
+            if (muteCheck && MuteDecision.ShouldMute(type, rule.MuteWindows, at))
             {
                 await InsertEventAsync(conn, tx, rule.TenantId, existing.AlertId,
                     "suppressed", null, "mute_window", detailJson, at, ct);
@@ -386,8 +422,41 @@ public sealed class AlertService(AlertingDb db) : IAlerting
     /// No row → null (a restore for something that never opened is a no-op, never
     /// an invented alert). The caller publishes AlertResolved AFTER this commit.
     /// </summary>
-    public async Task<AlertSnapshot?> RestoreAsync(
+    public Task<AlertSnapshot?> RestoreAsync(
         RuleSnapshot rule, CommittedReading reading, CancellationToken ct = default)
+        => ResolveOpenAsync(
+            rule,
+            reading.TimeUtc,
+            new AlertDetail(reading.Value, reading.ChannelKey, rule.RuleType,
+                rule.ThresholdLow, rule.ThresholdHigh, rule.DeviceId),
+            AlertReasons.ConditionRestored,
+            storeDetail: null,          // spec 05 behaviour: the row keeps its crossing detail
+            ct);
+
+    /// <summary>plan/06 §5.3 — the return resolves the offline alert with the true gap.</summary>
+    public Task<AlertSnapshot?> RestoreOfflineAsync(
+        RuleSnapshot rule, DateTimeOffset lastSeenAtUtc, DateTimeOffset seenAgainAtUtc,
+        CancellationToken ct = default)
+        => ResolveOpenAsync(
+            rule,
+            seenAgainAtUtc,
+            new AlertDetail(null, null, AlertTypes.Offline, null, null, rule.DeviceId,
+                OfflineGapMinutes: (seenAgainAtUtc - lastSeenAtUtc).TotalMinutes,
+                LastSeenAtUtc: lastSeenAtUtc),
+            AlertReasons.DeviceOnlineRestored,
+            storeDetail: new AlertDetail(null, null, AlertTypes.Offline, null, null, rule.DeviceId,
+                OfflineGapMinutes: (seenAgainAtUtc - lastSeenAtUtc).TotalMinutes,
+                LastSeenAtUtc: lastSeenAtUtc),
+            ct);
+
+    /// <summary>The one resolve machine: reason and detail are the only differences.</summary>
+    private async Task<AlertSnapshot?> ResolveOpenAsync(
+        RuleSnapshot rule,
+        DateTimeOffset at,
+        AlertDetail detail,
+        string reason,
+        AlertDetail? storeDetail,
+        CancellationToken ct)
     {
         var (conn, tx) = await db.OpenTenantScopeAsync(rule.TenantId, ct);
         try
@@ -407,27 +476,38 @@ public sealed class AlertService(AlertingDb db) : IAlerting
             if (open is null)
             {
                 await tx.CommitAsync(ct);
-                return null;
+                return null;                 // nothing was open: a silent spike stays silent
             }
 
-            var at = reading.TimeUtc;
+            // `COALESCE(@detail, detail)`: an offline return rewrites the episode's
+            // detail to the TRUE gap; a threshold restore leaves the crossing detail
+            // exactly as spec 05 wrote it.
             await using (var up = new NpgsqlCommand("""
-                UPDATE alerting.alerts SET status = 'resolved', resolved_at = @at WHERE id = @id
+                UPDATE alerting.alerts
+                   SET status = 'resolved', resolved_at = @at,
+                       detail = COALESCE(@detail::jsonb, detail)
+                 WHERE id = @id
                 """, conn, tx))
             {
                 up.Parameters.AddWithValue("at", at.UtcDateTime);
+                up.Parameters.AddWithValue("detail", storeDetail is null
+                    ? (object)DBNull.Value
+                    : JsonSerializer.Serialize(storeDetail, Json));
                 up.Parameters.AddWithValue("id", open.AlertId);
                 await up.ExecuteNonQueryAsync(ct);
             }
 
-            var detailJson = JsonSerializer.Serialize(new AlertDetail(
-                reading.Value, reading.ChannelKey, rule.RuleType,
-                rule.ThresholdLow, rule.ThresholdHigh, rule.DeviceId), Json);
+            var detailJson = JsonSerializer.Serialize(detail, Json);
             await InsertEventAsync(conn, tx, open.TenantId, open.AlertId,
-                "resolved", null, "condition_restored", detailJson, at, ct);
+                "resolved", null, reason, detailJson, at, ct);
             await tx.CommitAsync(ct);
 
-            return open with { Status = AlertStatuses.Resolved, ResolvedAt = at };
+            return open with
+            {
+                Status = AlertStatuses.Resolved,
+                ResolvedAt = at,
+                Detail = storeDetail ?? open.Detail,
+            };
         }
         catch
         {

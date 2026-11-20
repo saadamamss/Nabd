@@ -86,6 +86,21 @@ public sealed class DeviceLifecycle(AssetsDb db, DeviceTokenHasher hasher) : IDe
                 await seed.ExecuteNonQueryAsync(ct);
             }
 
+            // P4 spec 07 (FR-31, D7b): the per-device offline rule, seeded in the SAME
+            // mint transaction. One rule per device (0021's partial unique index), 30 min
+            // per plan/06 §8. The channel seed above never creates a rule for `offline`,
+            // and ON CONFLICT makes re-issue idempotent.
+            await using (var seedOffline = new NpgsqlCommand("""
+                INSERT INTO rules.rules (tenant_id, device_id, rule_type, offline_after_minutes)
+                VALUES (@tenant, @device, 'offline', 30)
+                ON CONFLICT DO NOTHING;
+                """, conn, tx))
+            {
+                seedOffline.Parameters.AddWithValue("tenant", acting.TenantId);
+                seedOffline.Parameters.AddWithValue("device", deviceId);
+                await seedOffline.ExecuteNonQueryAsync(ct);
+            }
+
             await tx.CommitAsync(ct);
             return Result<DeviceMintResult>.Success(new DeviceMintResult(
                 new DeviceSnapshot2(deviceId, acting.TenantId, request.AssetId, assetTemplate,

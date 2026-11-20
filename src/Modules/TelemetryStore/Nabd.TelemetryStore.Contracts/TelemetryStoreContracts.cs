@@ -43,6 +43,14 @@ public interface IDeviceStatusTracker
 {
     /// <summary>Buffer a device's latest presence. O(1), in-memory; the oldest flush window pays the DB, nobody else.</summary>
     Task MarkSeenAsync(Guid deviceId, Guid tenantId, DateTimeOffset lastSeenUtc, DateTimeOffset lastEventTimeUtc, CancellationToken ct = default);
+
+    /// <summary>
+    /// The newest mark THIS process has seen for the device (P4 spec 07, plan/04 §6).
+    /// Never cleared by a flush — the watchdog overlays it on device_status so the
+    /// flush cadence cannot count against the detection budget. null = not seen in
+    /// this process (fall back to the durable baseline).
+    /// </summary>
+    DateTimeOffset? LastSeen(Guid deviceId);
 }
 
 /// <summary>

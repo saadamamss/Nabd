@@ -4,6 +4,7 @@ using Nabd.ProcessingHost;
 using Nabd.Rules;
 using Nabd.SharedKernel;
 using Nabd.TelemetryStore;
+using Nabd.TelemetryStore.Contracts;
 
 var builder = Host.CreateApplicationBuilder(args);
 
@@ -26,6 +27,12 @@ builder.Services.AddSingleton<AlertingDb>();
 builder.Services.AddSingleton<AlertService>();
 builder.Services.AddSingleton<IAlerting>(sp => sp.GetRequiredService<AlertService>());
 builder.Services.AddSingleton<AlertLifecycle>();
+
+// P4 spec 07: the watchdog reads the SAME tracker/buffer the sink feeds (a second
+// instance would see no marks and call every device dead). Cadence is the host's.
+builder.Services.AddSingleton<IDeviceStatusTracker>(sp => sp.GetRequiredService<DeviceStatusTracker>());
+builder.Services.AddSingleton<OfflineWatchdog>();
+builder.Services.AddHostedService<OfflineWatchdogWorker>();
 
 var host = builder.Build();
 

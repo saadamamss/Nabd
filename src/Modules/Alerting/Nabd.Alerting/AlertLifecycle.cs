@@ -22,6 +22,8 @@ public sealed class AlertLifecycle : IDisposable
     private readonly ILogger<AlertLifecycle> _logger;
     private readonly IDisposable _crossings;
     private readonly IDisposable _restores;
+    private readonly IDisposable _offlineDetections;
+    private readonly IDisposable _onlineRestores;
 
     private long _opened;
     private long _deduplicated;
@@ -36,6 +38,8 @@ public sealed class AlertLifecycle : IDisposable
         _logger = logger;
         _crossings = bus.Subscribe<CrossingDetected>(OnCrossingAsync);
         _restores = bus.Subscribe<ConditionRestored>(OnRestoredAsync);
+        _offlineDetections = bus.Subscribe<OfflineDetected>(OnOfflineAsync);
+        _onlineRestores = bus.Subscribe<OnlineRestored>(OnOnlineAsync);
     }
 
     /// <summary>Observability (§11) — what this process's lifecycle actually did.</summary>
@@ -50,6 +54,8 @@ public sealed class AlertLifecycle : IDisposable
     {
         _crossings.Dispose();
         _restores.Dispose();
+        _offlineDetections.Dispose();
+        _onlineRestores.Dispose();
     }
 
     private async Task OnCrossingAsync(CrossingDetected evt, CancellationToken ct)
@@ -67,27 +73,7 @@ public sealed class AlertLifecycle : IDisposable
                 return;
             }
 
-            var (outcome, alert) = (result.Value.Outcome, result.Value.Alert);
-            switch (outcome)
-            {
-                case AlertRaiseOutcome.Opened:
-                case AlertRaiseOutcome.Reraised:
-                    Interlocked.Increment(ref _opened);
-                    // spec 08's Notifications + P5's hub subscribe HERE (plan/06 §5.1).
-                    await _bus.PublishAsync(new AlertRaised(alert), ct);
-                    break;
-
-                case AlertRaiseOutcome.Deduplicated:
-                    Interlocked.Increment(ref _deduplicated);
-                    break;
-
-                case AlertRaiseOutcome.Suppressed:
-                    Interlocked.Increment(ref _suppressed);
-                    break;
-                case AlertRaiseOutcome.Muted:
-                    Interlocked.Increment(ref _muted);   // the row + its event are the record
-                    break;
-            }
+            await AnnounceAsync(result.Value, ct);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
@@ -101,6 +87,83 @@ public sealed class AlertLifecycle : IDisposable
         }
     }
 
+    private async Task OnOfflineAsync(OfflineDetected evt, CancellationToken ct)
+    {
+        try
+        {
+            var result = await _alerts.RaiseOfflineAsync(
+                evt.Rule, evt.LastSeenAtUtc, evt.DetectedAtUtc, ct);
+            if (!result.IsSuccess)
+            {
+                _logger.LogError(
+                    "offline alert not persisted for rule {RuleId} / device {DeviceId}: {Error}",
+                    evt.Rule.RuleId, evt.Rule.DeviceId, result.Error);
+                return;
+            }
+            await AnnounceAsync(result.Value, ct);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception e)
+        {
+            _logger.LogError(e,
+                "offline lifecycle failed for rule {RuleId} / device {DeviceId}",
+                evt.Rule.RuleId, evt.Rule.DeviceId);
+        }
+    }
+
+    private async Task OnOnlineAsync(OnlineRestored evt, CancellationToken ct)
+    {
+        try
+        {
+            var resolved = await _alerts.RestoreOfflineAsync(
+                evt.Rule, evt.LastSeenAtUtc, evt.SeenAgainAtUtc, ct);
+            if (resolved is null) return;      // nothing was open — stay silent
+
+            Interlocked.Increment(ref _resolved);
+            await _bus.PublishAsync(new AlertResolved(
+                resolved.TenantId, resolved.AlertId, evt.SeenAgainAtUtc,
+                AlertReasons.DeviceOnlineRestored), ct);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception e)
+        {
+            _logger.LogError(e,
+                "offline auto-resolve failed for rule {RuleId} / device {DeviceId}",
+                evt.Rule.RuleId, evt.Rule.DeviceId);
+        }
+    }
+
+    /// <summary>The one place an outcome becomes (or does not become) a notification.</summary>
+    private async Task AnnounceAsync(AlertRaiseResult result, CancellationToken ct)
+    {
+        switch (result.Outcome)
+        {
+            case AlertRaiseOutcome.Opened:
+            case AlertRaiseOutcome.Reraised:
+                Interlocked.Increment(ref _opened);
+                // spec 08's Notifications + P5's hub subscribe HERE (plan/06 §5.1).
+                await _bus.PublishAsync(new AlertRaised(result.Alert), ct);
+                break;
+
+            case AlertRaiseOutcome.Deduplicated:
+                Interlocked.Increment(ref _deduplicated);
+                break;
+
+            case AlertRaiseOutcome.Suppressed:
+                Interlocked.Increment(ref _suppressed);
+                break;
+            case AlertRaiseOutcome.Muted:
+                Interlocked.Increment(ref _muted);   // the row + its event are the record
+                break;
+        }
+    }
+
     private async Task OnRestoredAsync(ConditionRestored evt, CancellationToken ct)
     {
         try
@@ -110,7 +173,8 @@ public sealed class AlertLifecycle : IDisposable
 
             Interlocked.Increment(ref _resolved);
             await _bus.PublishAsync(new AlertResolved(
-                resolved.TenantId, resolved.AlertId, evt.Reading.TimeUtc, "condition_restored"), ct);
+                resolved.TenantId, resolved.AlertId, evt.Reading.TimeUtc,
+                AlertReasons.ConditionRestored), ct);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {

@@ -19,6 +19,23 @@ public sealed record CrossingDetected(RuleSnapshot Rule, CommittedReading Readin
 /// </summary>
 public sealed record ConditionRestored(RuleSnapshot Rule, CommittedReading Reading) : IntegrationEvent;
 
-/// <summary>Offline watchdog verdict (plan/06 §4 — spec 07's lane; shape unchanged).</summary>
+/// <summary>
+/// The offline watchdog's verdict (P4 spec 07, plan/06 §4): the silence passed the
+/// device's own window. `LastSeenAtUtc` is when the device was last heard; the gap
+/// is DetectedAtUtc - LastSeenAtUtc. The snapshot rides whole, so Alerting opens the
+/// alert from the event and never reads the Rules schema (D7d).
+/// </summary>
 public sealed record OfflineDetected(
-    Guid TenantId, Guid RuleId, Guid AssetId, Guid DeviceId, DateTimeOffset TimeUtc) : IntegrationEvent;
+    RuleSnapshot Rule,
+    DateTimeOffset LastSeenAtUtc,
+    DateTimeOffset DetectedAtUtc) : IntegrationEvent;
+
+/// <summary>
+/// The device spoke again after a FIRED offline detection (plan/06 §5.3): Alerting
+/// auto-resolves the open alert with the TRUE gap (last seen before → first seen
+/// after). A device that never fired produces no event — nothing was opened.
+/// </summary>
+public sealed record OnlineRestored(
+    RuleSnapshot Rule,
+    DateTimeOffset LastSeenAtUtc,
+    DateTimeOffset SeenAgainAtUtc) : IntegrationEvent;

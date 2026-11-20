@@ -6,6 +6,7 @@ using Nabd.Assets.Contracts;
 using Nabd.Identity;
 using Nabd.Identity.Contracts;
 using Nabd.Rules;
+using Nabd.TelemetryStore;
 using Nabd.Rules.Contracts;
 using Xunit;
 
@@ -123,7 +124,9 @@ public sealed class RulesWallTests(PostgresFixture pg) : IClassFixture<PostgresF
         Assert.Equal([
             "id", "tenant_id", "device_id", "channel_key", "rule_type",
             "threshold_low", "threshold_high", "duration_seconds",
-            "cooldown_minutes", "severity", "enabled"], columns["rules"]);
+            "cooldown_minutes", "severity", "enabled",
+            // 0025 (spec 07) added the offline window — the wall test sees the real shape
+            "offline_after_minutes"], columns["rules"]);
         Assert.Equal(
             // 0024 added `fired` (the episode's durable memory) — the wall test must
             // see the real shape, so the amendment is recorded here deliberately.
@@ -262,7 +265,7 @@ public sealed class RulesWallTests(PostgresFixture pg) : IClassFixture<PostgresF
         Assert.Equal(RuleErrors.OfflineRefused, refused.Error);
     }
 
-    // ---- fact 6 — FR-15: mint seeds one rule per LIMITED channel --------------
+    // ---- fact 6 — FR-15: mint seeds one rule per LIMITED channel + the offline row --
 
     [Fact]
     public async Task minting_a_device_seeds_its_limited_channels_as_rules()
@@ -276,7 +279,8 @@ public sealed class RulesWallTests(PostgresFixture pg) : IClassFixture<PostgresF
         var seeded = await rules.ListByDeviceAsync(Admin(tenant), device.Device.DeviceId);
 
         Assert.True(seeded.IsSuccess, seeded.Error);
-        var row = Assert.Single(seeded.Value);   // door has NO limits → no rule for it
+        Assert.Equal(2, seeded.Value.Count);   // door has NO limits → no channel rule for it
+        var row = Assert.Single(seeded.Value, r => r.RuleType != "offline");
         Assert.Equal("temperature", row.ChannelKey);
         Assert.Equal("outside_range", row.RuleType);
         Assert.Equal(2.0, row.ThresholdLow!.Value);
@@ -285,6 +289,12 @@ public sealed class RulesWallTests(PostgresFixture pg) : IClassFixture<PostgresF
         Assert.Equal(60, row.CooldownMinutes);
         Assert.Equal("warn", row.Severity);
         Assert.True(row.Enabled);
+
+        // spec 07: every device also carries its per-device offline rule (0025)
+        var offline = Assert.Single(seeded.Value, r => r.RuleType == "offline");
+        Assert.Null(offline.ChannelKey);
+        Assert.Equal(30, offline.OfflineAfterMinutes);
+        Assert.True(offline.Enabled);
     }
 
     // ---- fact 7 — seeding idempotency: re-seed never duplicates ---------------
@@ -298,7 +308,7 @@ public sealed class RulesWallTests(PostgresFixture pg) : IClassFixture<PostgresF
         var device = await MintAsync(tenant, asset, "idem");
         var rules = new DeviceRules(pg.Rules);
         var before = (await rules.ListByDeviceAsync(Admin(tenant), device.Device.DeviceId)).Value.Count;
-        Assert.Equal(1, before);
+        Assert.Equal(2, before);   // temperature rule + the offline rule (spec 07)
 
         // re-issue the token (a re-mint path) and re-run the seed shape once more
         var devices = new DeviceLifecycle(pg.Assets, new DeviceTokenHasher());
@@ -306,7 +316,7 @@ public sealed class RulesWallTests(PostgresFixture pg) : IClassFixture<PostgresF
         Assert.True(reissued.IsSuccess, reissued.Error);
 
         var after = (await rules.ListByDeviceAsync(Admin(tenant), device.Device.DeviceId)).Value.Count;
-        Assert.Equal(1, after);   // ON CONFLICT law: still exactly one
+        Assert.Equal(2, after);   // ON CONFLICT law: still exactly one of each
     }
 
     // ---- fact 8 — the engine's memory: rule_eval_state rides the rule --------
@@ -353,5 +363,101 @@ public sealed class RulesWallTests(PostgresFixture pg) : IClassFixture<PostgresF
             "SELECT count(*) FROM rules.rule_eval_state WHERE rule_id = @r;", after);
         gone.Parameters.AddWithValue("r", ruleId);
         Assert.Equal(0L, (long)(await gone.ExecuteScalarAsync())!);
+    }
+
+    // ---- fact 10 — 0025's door: ONE fixed SECURITY DEFINER window, nabd_app only --
+
+    [Fact]
+    public async Task the_offline_window_is_one_fixed_definer_door()
+    {
+        // a real device, so "the app lane sees none" is about the wall, not an empty DB
+        var tenant = await RegisterAsync("win");
+        var template = await EnsureTemplateAsync("win");
+        var asset = await EnsureAssetAsync(tenant, template);
+        var device = await MintAsync(tenant, asset, "win");
+
+        await using var ownerConn = await pg.Owner.OpenConnectionAsync();
+        await using var shape = new NpgsqlCommand("""
+            SELECT p.prosecdef,
+                   pg_get_function_result(p.oid),
+                   coalesce((SELECT string_agg(
+                                coalesce(g.grantee::regrole::text, 'PUBLIC') || ':' || g.privilege_type, ','
+                                ORDER BY 1)
+                             FROM aclexplode(p.proacl) g), 'none')
+            FROM pg_proc p
+            JOIN pg_namespace n ON n.oid = p.pronamespace
+            WHERE n.nspname = 'rules' AND p.proname = 'offline_watchdog_candidates';
+            """, ownerConn);
+        await using (var reader = await shape.ExecuteReaderAsync())
+        {
+            Assert.True(await reader.ReadAsync(), "0025's window must exist");
+            Assert.True(reader.GetBoolean(0), "the door must be SECURITY DEFINER");
+
+            var declared = reader.GetString(1);
+            foreach (var column in new[]
+                     {
+                         "tenant_id", "device_id", "rule_id", "severity", "cooldown_minutes",
+                         "duration_seconds", "offline_after_minutes", "last_seen_at",
+                         "state_last_state", "violating_since", "fired",
+                     })
+                Assert.Contains(column, declared);
+            Assert.Equal(11, declared.Count(c => c == ',') + 1);   // no silent widening
+
+            // least privilege: EXECUTE for nabd_app and the function's owner ONLY —
+            // PUBLIC (the default every new function inherits) must have been revoked
+            var acl = reader.GetString(2);
+            Assert.Contains("nabd_app:EXECUTE", acl);
+            Assert.DoesNotContain("PUBLIC", acl);
+            Assert.Equal(2, acl.Split(',').Length);
+        }
+
+        // why the window exists: the app identity is RLS-walled out of the fleet. Scoped
+        // to any tenant at all (a random one, so zero rows), the app lane sees nothing —
+        // while the owner sees the device just minted. (The wall also fails SHUT with no
+        // context at all: a recycled pooled connection carries `app.current_tenant = ''`
+        // because RESET ALL empties a custom GUC instead of removing it, so `''::uuid`
+        // errors — an error is the safe direction, never a leak.)
+        await using var app = await pg.Rules.OpenPreAuthConnectionAsync();
+        await using var read = await app.BeginTransactionAsync();
+        await using (var scope = new NpgsqlCommand(
+            "SELECT set_config('app.current_tenant', @t, true);", app, read))
+        {
+            scope.Parameters.AddWithValue("t", Guid.NewGuid().ToString());
+            await scope.ExecuteScalarAsync();
+        }
+        await using (var walled = new NpgsqlCommand(
+            "SELECT count(*) FROM assets.devices;", app, read))
+            Assert.Equal(0L, (long)(await walled.ExecuteScalarAsync())!);
+        await read.CommitAsync();
+
+        // ...while the owner sees the device that was just minted...
+        await using (var seen = new NpgsqlCommand(
+            "SELECT count(*) FROM assets.devices WHERE id = @d;", ownerConn))
+        {
+            seen.Parameters.AddWithValue("d", device.Device.DeviceId);
+            Assert.Equal(1L, (long)(await seen.ExecuteScalarAsync())!);
+        }
+
+        // ...and the ONE door returns it without any tenant GUC — but only once the
+        // device has actually been heard (D7g: a device that never reported is not
+        // offline; 0025's INNER JOIN on device_status is that law in SQL)
+        await using (var unseen = new NpgsqlCommand(
+            "SELECT count(*) FROM rules.offline_watchdog_candidates() WHERE device_id = @d;", app))
+        {
+            unseen.Parameters.AddWithValue("d", device.Device.DeviceId);
+            Assert.Equal(0L, (long)(await unseen.ExecuteScalarAsync())!);   // never seen ≠ offline
+        }
+
+        var tracker = new DeviceStatusTracker(pg.Telemetry);
+        await tracker.MarkSeenAsync(device.Device.DeviceId, tenant.Tenant.TenantId,
+            DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
+        await tracker.FlushNowAsync();
+
+        await using (var door = new NpgsqlCommand(
+            "SELECT count(*) FROM rules.offline_watchdog_candidates() WHERE device_id = @d;", app))
+        {
+            door.Parameters.AddWithValue("d", device.Device.DeviceId);
+            Assert.Equal(1L, (long)(await door.ExecuteScalarAsync())!);
+        }
     }
 }
