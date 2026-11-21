@@ -379,6 +379,35 @@ public sealed class AlertLifecycleTests(PostgresFixture pg) : IClassFixture<Post
         Assert.Equal(["opened", "resolved", "reopened"], events.Select(e => e.Event).ToArray());
     }
 
+    // ---- fact 7b — a reopen after a severity change tells the truth -------------
+    //
+    // Found by the spec-09 live drill (2026-11-21): the reopen path refreshed
+    // opened_at/title/detail but NOT severity, so a rule turned critical kept an
+    // alert row saying `warn`. Channel routing (plan/06 §6) reads the SNAPSHOT's
+    // severity, so a user who picked critical-only never heard a critical alert.
+    [Fact]
+    public async Task a_reopen_after_a_severity_change_carries_the_new_severity()
+    {
+        var tenant = await RegisterAsync("sevchange");
+        var (_, device, rule) = await FreshAsync(tenant, "sevchange", severity: "warn");
+        var (service, _, rec) = Rig();
+
+        await rec.Bus.PublishAsync(Crossing(rule, device, T0, 10.0));
+        await rec.Bus.PublishAsync(Restored(rule, device, T0.AddMinutes(10), 5.0));
+
+        // the admin moves THIS rule to critical between episodes (PATCH, only the leg present)
+        var rules = new DeviceRules(pg.Rules);
+        var updated = await rules.UpdateRuleAsync(
+            Admin(tenant), device, rule.RuleId, new RuleUpdateRequest(Severity: "critical"));
+        Assert.True(updated.IsSuccess, updated.Error);
+
+        await rec.Bus.PublishAsync(Crossing(updated.Value, device, T0.AddMinutes(80), 10.0));
+
+        var alert = Assert.Single((await service.ListAsync(Admin(tenant), new AlertFilter())).Value);
+        Assert.Equal(AlertSeverities.Critical, alert.Severity);                    // the row tells the truth
+        Assert.Equal(AlertSeverities.Critical, rec.Raised[^1].Alert.Severity);    // and so does the fan-out
+    }
+
     // ---- fact 8 — critical cools at half (§5.2 ×0.5) --------------------------
 
     [Fact]
