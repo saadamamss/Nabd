@@ -371,11 +371,13 @@ public sealed class AlertService(AlertingDb db) : IAlerting
                 UPDATE alerting.alerts
                    SET status = 'open', opened_at = @at, resolved_at = NULL,
                        acknowledged_at = NULL, acknowledged_by = NULL,
+                       severity = @sev,
                        title = @title::jsonb, detail = @detail::jsonb
                  WHERE id = @id
                 """, conn, tx))
             {
                 up.Parameters.AddWithValue("at", at.UtcDateTime);
+                up.Parameters.AddWithValue("sev", rule.Severity);
                 up.Parameters.AddWithValue("title", titleJson);
                 up.Parameters.AddWithValue("detail", detailJson);
                 up.Parameters.AddWithValue("id", existing.AlertId);
@@ -388,6 +390,7 @@ public sealed class AlertService(AlertingDb db) : IAlerting
             {
                     Status = AlertStatuses.Open,
                     OpenedAt = at,
+                    Severity = rule.Severity,   // spec 09 drill: the new episode's routing class
                     ResolvedAt = null,
                     AcknowledgedAt = null,
                     AcknowledgedBy = null,
