@@ -125,7 +125,7 @@ public sealed class AlertLifecycle : IDisposable
             Interlocked.Increment(ref _resolved);
             await _bus.PublishAsync(new AlertResolved(
                 resolved.TenantId, resolved.AlertId, evt.SeenAgainAtUtc,
-                AlertReasons.DeviceOnlineRestored), ct);
+                AlertReasons.DeviceOnlineRestored, resolved), ct);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
@@ -174,7 +174,7 @@ public sealed class AlertLifecycle : IDisposable
             Interlocked.Increment(ref _resolved);
             await _bus.PublishAsync(new AlertResolved(
                 resolved.TenantId, resolved.AlertId, evt.Reading.TimeUtc,
-                AlertReasons.ConditionRestored), ct);
+                AlertReasons.ConditionRestored, resolved), ct);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {

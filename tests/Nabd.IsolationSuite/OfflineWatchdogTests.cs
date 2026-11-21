@@ -253,7 +253,8 @@ public sealed class OfflineWatchdogTests(PostgresFixture pg) : IClassFixture<Pos
         Assert.Equal(31.0, alert.Detail.OfflineGapMinutes!.Value, 3);
         Assert.Equal(T0, alert.Detail.LastSeenAtUtc);
         Assert.Equal("offline", alert.Detail.RuleType);
-        Assert.Single(rec.RaisedForRule(offline.RuleId));
+        // the EVENT must not lie about its type: spec 08 chooses the email template by it
+        Assert.Equal(AlertTypes.Offline, Assert.Single(rec.RaisedForRule(offline.RuleId)).Alert.Type);
 
         // a dead device does not re-notify on every tick (the episode is the unit)
         await watchdog.TickAsync(T0.AddMinutes(40));
