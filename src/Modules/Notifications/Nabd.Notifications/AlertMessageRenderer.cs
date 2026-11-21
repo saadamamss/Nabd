@@ -6,19 +6,20 @@ using Nabd.Alerting.Contracts;
 
 /// <summary>
 /// Renders one alert into subject+body from `message_templates`, in the recipient's
-/// language. The template owns the product voice; the row owns the facts — that is why
-/// the placeholders are few and named. A missing template is an ERROR (never a silent skip).
+/// language, on the requested channel (P4 spec 09: email has a subject, Telegram does not).
+/// The template owns the product voice; the row owns the facts — that is why the
+/// placeholders are few and named. A missing template is an ERROR (never a silent skip).
 /// </summary>
-public sealed class AlertEmailRenderer(NotificationsDb db)
+public sealed class AlertMessageRenderer(NotificationsDb db)
 {
     public async Task<(string Subject, string Body)> RenderAsync(
-        AlertSnapshot alert, string templateKey, string locale,
+        AlertSnapshot alert, string templateKey, string channel, string locale,
         DateTimeOffset at, string? reason, CancellationToken ct = default)
     {
-        var (subject, body) = await LoadAsync(templateKey, locale, ct)
-            ?? await LoadAsync(templateKey, "en", ct)          // fallback: one language, never silence
+        var (subject, body) = await LoadAsync(templateKey, channel, locale, ct)
+            ?? await LoadAsync(templateKey, channel, "en", ct)   // fallback: one language, never silence
             ?? throw new InvalidOperationException(
-                $"message template missing: {templateKey}/email/{locale} (and no en fallback).");
+                $"message template missing: {templateKey}/{channel}/{locale} (and no en fallback).");
 
         var title = locale == "ar" ? alert.TitleAr : alert.TitleEn;
 
@@ -43,17 +44,20 @@ public sealed class AlertEmailRenderer(NotificationsDb db)
     }
 
     private async Task<(string Subject, string Body)?> LoadAsync(
-        string key, string locale, CancellationToken ct)
+        string key, string channel, string locale, CancellationToken ct)
     {
         await using var conn = await db.OpenPlatformReadAsync(ct);
         await using var cmd = new NpgsqlCommand("""
             SELECT subject, body FROM notifications.message_templates
-             WHERE key = @k AND channel = 'email' AND locale = @l;
+             WHERE key = @k AND channel = @ch AND locale = @l;
             """, conn);
         cmd.Parameters.AddWithValue("k", key);
+        cmd.Parameters.AddWithValue("ch", channel);
         cmd.Parameters.AddWithValue("l", locale);
         await using var reader = await cmd.ExecuteReaderAsync(ct);
-        return await reader.ReadAsync(ct) ? (reader.GetString(0), reader.GetString(1)) : null;
+        return await reader.ReadAsync(ct)
+            ? (reader.IsDBNull(0) ? "" : reader.GetString(0), reader.GetString(1))   // Telegram: no subject
+            : null;
     }
 
     private static string Severity(string severity, string locale) => (severity, locale) switch

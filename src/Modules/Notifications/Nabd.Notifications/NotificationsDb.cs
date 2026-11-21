@@ -42,4 +42,12 @@ public sealed class NotificationsDb
 
     public ValueTask<NpgsqlConnection> OpenPlatformReadAsync(CancellationToken ct = default) =>
         _dataSource.OpenConnectionAsync(ct);
+
+/// <summary>
+/// Platform-wide lane for the ONE audited exception (spec 09): the SECURITY DEFINER
+/// verify function. No GUC on purpose — the function, not the caller, owns the wall.
+/// </summary>
+public ValueTask<NpgsqlConnection> OpenPlatformCommandAsync(CancellationToken ct = default) =>
+    _dataSource.OpenConnectionAsync(ct);
+
 }

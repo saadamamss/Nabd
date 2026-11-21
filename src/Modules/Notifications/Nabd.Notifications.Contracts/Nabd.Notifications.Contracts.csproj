@@ -2,6 +2,8 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\..\SharedKernel\Nabd.SharedKernel\Nabd.SharedKernel.csproj" />
+    <!-- P4 spec 09: CallerContext for the self-service doors (Contracts→Contracts, lawful) -->
+    <ProjectReference Include="..\..\Identity\Nabd.Identity.Contracts\Nabd.Identity.Contracts.csproj" />
   </ItemGroup>
 
   <PropertyGroup>

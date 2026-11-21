@@ -34,7 +34,7 @@ public static class SecretBox
         return Encoding.UTF8.GetString(plain);
     }
 
-    private static byte[] Key()
+    internal static byte[] Key()        // spec 09: TelegramLinkCodes derives its HMAC key (HKDF)
     {
         var raw = Environment.GetEnvironmentVariable("NABD_SECRET_KEY");
         if (string.IsNullOrWhiteSpace(raw))

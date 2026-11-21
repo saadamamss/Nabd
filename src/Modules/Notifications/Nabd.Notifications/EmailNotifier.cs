@@ -15,7 +15,7 @@ using Nabd.SharedKernel;
 public sealed class EmailNotifier : IDisposable
 {
     private readonly IUserDirectory _people;
-    private readonly AlertEmailRenderer _renderer;
+    private readonly AlertMessageRenderer _renderer;
     private readonly EmailQueue _queue;
     private readonly ILogger<EmailNotifier> _logger;
     private readonly IDisposable _raised;
@@ -24,7 +24,7 @@ public sealed class EmailNotifier : IDisposable
     private long _dispatched;
 
     public EmailNotifier(
-        IEventBus bus, IUserDirectory people, AlertEmailRenderer renderer,
+        IEventBus bus, IUserDirectory people, AlertMessageRenderer renderer,
         EmailQueue queue, ILogger<EmailNotifier> logger)
     {
         _people = people;
@@ -75,7 +75,7 @@ public sealed class EmailNotifier : IDisposable
             foreach (var person in people)
             {
                 var (subject, body) = await _renderer.RenderAsync(
-                    alert, templateKey, person.Locale, at, reason, ct);
+                    alert, templateKey, AlertChannels.Email, person.Locale, at, reason, ct);
 
                 var message = new NotificationMessage(
                     alert.TenantId, alert.AlertId, "email", person.Locale,
