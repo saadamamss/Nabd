@@ -108,12 +108,13 @@ public sealed class EmailNotificationTests(PostgresFixture pg) : IClassFixture<P
 
             var db = pg.Notifications;
             var config = new EmailChannelConfig(db);
-            var renderer = new AlertEmailRenderer(db);
+            // spec 09: the renderer is channel-aware and the log insert is shared
+            var renderer = new AlertMessageRenderer(db);
             var policy = new EmailRetryPolicy([TimeSpan.FromMilliseconds(1), TimeSpan.FromMilliseconds(1)]);
 
             rig.Queue = new EmailQueue();
             rig.Sender = new EmailNotificationSender(
-                db, config, transport, policy, rig.SenderLog);
+                config, transport, policy, new NotificationLog(db), rig.SenderLog);
             rig.Bus = new InProcessEventBus();
             rig.Notifier = new EmailNotifier(
                 rig.Bus, new UserDirectory(pg.Db), renderer, rig.Queue, rig.NotifierLog);

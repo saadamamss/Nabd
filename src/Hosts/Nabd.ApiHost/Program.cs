@@ -15,6 +15,8 @@ using Nabd.TelemetryStore.Contracts;
 using Nabd.Rules;
 using Nabd.Rules.Contracts;
 using Nabd.Alerting;
+using Nabd.Notifications;
+using Nabd.Notifications.Contracts;
 using Nabd.Alerting.Contracts;
 
 _ = Nabd.Identity.EnumerationArmor.BurnHash;
@@ -86,6 +88,13 @@ builder.Services.AddSingleton<RejectionCounters>();
 builder.Services.AddSingleton<HttpIngestDoor>();
 // ===== P4 spec 05 — the Alerting room's doors (the lifecycle lives in the PH) =====
 builder.Services.AddSingleton<AlertingDb>();
+
+// ===== P4 spec 09 — the Telegram channel's self-service doors =====
+// NotificationsDb is the room's own door (tenant lane + platform read); the same
+// class the ProcessingHost uses, so the wall laws cannot drift between hosts.
+builder.Services.AddSingleton<NotificationsDb>();
+builder.Services.AddSingleton<TelegramChannels>();
+builder.Services.AddSingleton<ITelegramChannels>(sp => sp.GetRequiredService<TelegramChannels>());
 builder.Services.AddSingleton<IAlerting, AlertService>();
 // Health endpoints (ADR-010; 08 §6): liveness = process up.
 // Readiness expands in P1+ to probe DB, queue and broker session (08 §6 readiness list).

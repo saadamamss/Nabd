@@ -36,6 +36,7 @@ public static class Operations
     public const string AlertRead = "alert.read";
     public const string AlertAck = "alert.acknowledge";
     public const string AlertResolve = "alert.resolve";
+    public const string TelegramManage = "telegram.manage";   // P4 spec 09 (FR-38): the user's own chat
 }
 
 
@@ -49,7 +50,7 @@ public static class AuthorizationMatrix
             Operations.UserLocaleSet,Operations.PasswordChange,
             Operations.DeviceRead, Operations.AssetRead, Operations.TemplateRead,
             Operations.RuleRead,
-            Operations.AlertRead, Operations.AlertAck
+            Operations.AlertRead, Operations.AlertAck, Operations.TelegramManage
         },
 
         ["tenant_admin"] = new HashSet<string>
@@ -64,7 +65,8 @@ public static class AuthorizationMatrix
             Operations.AssetUpdate, Operations.AssetArchive,Operations.TemplateRead,
             Operations.RuleRead, Operations.RuleCreate,
             Operations.RuleUpdate, Operations.RuleDelete,
-            Operations.AlertRead, Operations.AlertAck, Operations.AlertResolve
+            Operations.AlertRead, Operations.AlertAck, Operations.AlertResolve,
+            Operations.TelegramManage
         },
         ["platform_admin"] = new HashSet<string>
         {
@@ -79,7 +81,8 @@ public static class AuthorizationMatrix
             Operations.AssetUpdate, Operations.AssetArchive,Operations.TemplateRead,
             Operations.RuleRead, Operations.RuleCreate,
             Operations.RuleUpdate, Operations.RuleDelete,
-            Operations.AlertRead, Operations.AlertAck, Operations.AlertResolve
+            Operations.AlertRead, Operations.AlertAck, Operations.AlertResolve,
+            Operations.TelegramManage
         },
     };
 
