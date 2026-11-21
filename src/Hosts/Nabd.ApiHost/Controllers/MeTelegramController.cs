@@ -57,8 +57,12 @@ public sealed class MeTelegramController(ITelegramChannels channels) : Controlle
         var caller = Caller.FromUser(User);
         if (caller is null) return Unauthorized();
 
-        var result = await channels.SetSeveritiesAsync(
-            caller, body.Severities ?? [], ct);
+        // A missing field is a MALFORMED request, not "mute everything": only an
+        // explicit [] silences the channel (D9e, review 2026-11-22).
+        if (body.Severities is null)
+            return UnprocessableEntity(new { code = NotificationErrors.InvalidSeverity });
+
+        var result = await channels.SetSeveritiesAsync(caller, body.Severities, ct);
         return result.IsSuccess ? Ok(result.Value) : Translate(result.Error!);
     }
 
