@@ -306,9 +306,13 @@ public sealed class AlertService(AlertingDb db) : IAlerting
                 await InsertEventAsync(conn, tx, rule.TenantId, id,
                     "opened", null, null, detailJson, at, ct);
 
+                // `type`, NOT a hard-coded threshold: the event's payload is what every
+                // subscriber routes on (spec 08 chooses the email template by it), and a
+                // row that says `offline` while its event says `threshold` is a lie that
+                // only surfaces one room away. Found by the 2026-11-21 live drill.
                 var snapshot = new AlertSnapshot(
                     id, rule.TenantId, asset.Value.AssetId, rule.RuleId,
-                    AlertTypes.Threshold, rule.Severity, AlertStatuses.Open,
+                    type, rule.Severity, AlertStatuses.Open,
                     at, null, null, null, titleEn, titleAr, detail);
 
                 // plan/06 §5.4 (D6d): the row STILL opens — the story stays visible in

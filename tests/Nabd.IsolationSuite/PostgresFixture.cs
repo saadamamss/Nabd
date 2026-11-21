@@ -6,6 +6,7 @@ using Nabd.Admin;
 using Nabd.Assets;
 using Nabd.Rules;
 using Nabd.Alerting;
+using Nabd.Notifications;
 using Nabd.TelemetryStore;
 
 namespace Nabd.IsolationSuite;
@@ -47,6 +48,10 @@ public sealed class PostgresFixture : IAsyncLifetime
     /// <summary>TelemetryStore lane — the presence tracker's door (P4 spec 07 needs it:
     /// the watchdog reads in-memory last-seen and the device_status baseline).</summary>
     public TelemetryStoreDb Telemetry { get; private set; } = null!;
+
+    /// <summary>Notifications lane — the room's own door (P4 spec 08): the send log's
+    /// tenant-scope lane and the platform-read lane for config/templates.</summary>
+    public NotificationsDb Notifications { get; private set; } = null!;
 
     public async Task InitializeAsync()
     {
@@ -174,6 +179,10 @@ public sealed class PostgresFixture : IAsyncLifetime
         Alerts = new AlertingDb();
         // the TelemetryStore room's DB door — the presence tracker/baseline (P4 spec 07)
         Telemetry = new TelemetryStoreDb();
+        // the Notifications room's DB door — send log + platform config (P4 spec 08)
+        Environment.SetEnvironmentVariable(
+            "NABD_SECRET_KEY", Convert.ToBase64String(Enumerable.Range(1, 32).Select(i => (byte)i).ToArray()));
+        Notifications = new NotificationsDb();
     }
 
     public async Task DisposeAsync()

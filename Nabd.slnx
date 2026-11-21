@@ -46,6 +46,7 @@
   </Folder>
   <Folder Name="/src/Tools/">
     <Project Path="src/Tools/Nabd.Simulator/Nabd.Simulator.csproj" />
+    <Project Path="src/Tools/Nabd.Secrets/Nabd.Secrets.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Nabd.ArchTests/Nabd.ArchTests.csproj" />

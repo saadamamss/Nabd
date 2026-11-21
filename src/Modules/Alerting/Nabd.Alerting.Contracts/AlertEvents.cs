@@ -14,6 +14,11 @@ public sealed record AlertRaised(AlertSnapshot Alert) : IntegrationEvent;
 public sealed record AlertAcknowledged(
     Guid TenantId, Guid AlertId, Guid UserId, DateTimeOffset AtUtc) : IntegrationEvent;
 
-/// <summary>RESOLVED (manual or §5.3 auto). `Reason` is the documented why.</summary>
+/// <summary>
+/// RESOLVED (manual or §5.3 auto). `Reason` is the documented why. `Alert` is the row AFTER
+/// resolution — the same law as AlertRaised: a subscriber must never read the Alerting schema
+/// to learn what it is notifying about (spec 08's resolve email).
+/// </summary>
 public sealed record AlertResolved(
-    Guid TenantId, Guid AlertId, DateTimeOffset AtUtc, string Reason) : IntegrationEvent;
+    Guid TenantId, Guid AlertId, DateTimeOffset AtUtc, string Reason,
+    AlertSnapshot Alert) : IntegrationEvent;

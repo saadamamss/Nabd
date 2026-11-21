@@ -203,8 +203,12 @@ public sealed class AlertLifecycleTests(PostgresFixture pg) : IClassFixture<Post
         Assert.Equal([
             "id", "tenant_id", "alert_id", "event", "actor_user_id",
             "reason", "detail", "at"], columns["alert_events"]);
+        // spec 08 (0026) widened the send log into evidence: the template, the language,
+        // the attempt count and the error are now part of the row. Still an exact list —
+        // a drift in either direction fails this fact.
         Assert.Equal([
-            "id", "tenant_id", "alert_id", "channel", "recipient", "status", "sent_at"],
+            "id", "tenant_id", "alert_id", "channel", "recipient", "status", "sent_at",
+            "template_key", "locale", "attempts", "error"],
             columns["notification_log"]);
     }
 

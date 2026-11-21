@@ -4,6 +4,14 @@
     <ProjectReference Include="..\..\..\SharedKernel\Nabd.SharedKernel\Nabd.SharedKernel.csproj" />
     <ProjectReference Include="..\Nabd.Notifications.Contracts\Nabd.Notifications.Contracts.csproj" />
     <ProjectReference Include="..\..\Alerting\Nabd.Alerting.Contracts\Nabd.Alerting.Contracts.csproj" />
+    <!-- P4 spec 08: recipients come through Identity's contract, never its schema -->
+    <ProjectReference Include="..\..\Identity\Nabd.Identity.Contracts\Nabd.Identity.Contracts.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Npgsql" Version="10.0.3" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.14" />
+    <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.14" />
   </ItemGroup>
 
   <PropertyGroup>

@@ -42,6 +42,8 @@
     <ProjectReference Include="..\..\src\Modules\Ingestion\Nabd.Ingestion\Nabd.Ingestion.csproj" />
     <!-- spec 05: the suite drives the Alerting room's lifecycle + doors directly -->
     <ProjectReference Include="..\..\src\Modules\Alerting\Nabd.Alerting\Nabd.Alerting.csproj" />
+    <!-- spec 08: the suite drives the Notifications room's channel + log directly -->
+    <ProjectReference Include="..\..\src\Modules\Notifications\Nabd.Notifications\Nabd.Notifications.csproj" />
   </ItemGroup>
 
   <!-- FrameworkReference does NOT flow transitively from a ProjectReference —
