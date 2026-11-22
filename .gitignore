@@ -22,10 +22,10 @@ test-results/
 coverage/
 BenchmarkDotNet.Artifacts/
 
-# ===== Node / Next.js (P5) =====
+# ===== Angular (P5) =====
 node_modules/
-.next/
-out/
+.angular/
+dist/
 *.tsbuildinfo
 
 # ===== Docker / env secrets (07 §7: env files live per environment, never in git) =====

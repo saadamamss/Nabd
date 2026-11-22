@@ -1,0 +1,27 @@
+<div class="app-frame">
+  <header class="topbar">
+    <span class="brand">{{ 'app.name' | transloco }}</span>
+    @if (tenantName(); as name) {
+      <span class="tenant">{{ name }}</span>
+    }
+    <span class="spacer"></span>
+    <button type="button" class="locale-toggle" (click)="locale.toggle()">
+      {{ 'locale.switchTo' | transloco }}
+    </button>
+    <button type="button" class="signout" (click)="signOut()">
+      {{ 'auth.signOut' | transloco }}
+    </button>
+  </header>
+
+  <nav class="sidenav" [attr.aria-label]="'nav.label' | transloco">
+    @for (item of visibleNav(); track item.path) {
+      <a class="nav-link" [routerLink]="item.path" routerLinkActive="is-active">
+        {{ item.key | transloco }}
+      </a>
+    }
+  </nav>
+
+  <main class="content">
+    <router-outlet />
+  </main>
+</div>

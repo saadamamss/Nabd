@@ -29,3 +29,30 @@ jobs:
 
       # Coverage gate (70% on module code, rising rule) joins here by P1 — 09 §2.
       # NetArchTest already runs inside `dotnet test` (RoomBoundaryTests).
+
+  web:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: src/Web/Nabd.Web
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: src/Web/Nabd.Web/package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      - name: Lint (logical properties only)
+        run: npm run lint
+
+      - name: Unit tests (headless, no Chrome)
+        run: npm test -- --watch=false
+
+      - name: Production build
+        run: npm run build

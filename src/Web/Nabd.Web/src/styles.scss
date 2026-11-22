@@ -1,0 +1,48 @@
+// Global styles. Logical properties only (spec 01, "direction discipline"):
+// the same stylesheet serves LTR and RTL; `dir` lives on <html>.
+@use '@angular/material' as mat;
+
+html {
+  height: 100%;
+
+  @include mat.theme(
+    (
+      color: (
+        primary: mat.$azure-palette,
+        tertiary: mat.$blue-palette,
+      ),
+      density: 0,
+    )
+  );
+}
+
+body {
+  margin: 0;
+  min-height: 100%;
+  font-family:
+    system-ui,
+    'Segoe UI',
+    Tahoma,
+    'Noto Naskh Arabic',
+    'Noto Sans Arabic',
+    sans-serif;
+  background: var(--mat-sys-surface);
+  color: var(--mat-sys-on-surface);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+// The dictionary's direction is authoritative; the browser default font for
+// Arabic must still read well when the OS lacks a Naskh face.
+:root[lang='ar'] {
+  font-family:
+    'Noto Naskh Arabic',
+    'Segoe UI',
+    Tahoma,
+    system-ui,
+    sans-serif;
+}

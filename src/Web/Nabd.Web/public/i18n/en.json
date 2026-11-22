@@ -1,0 +1,66 @@
+{
+  "app": {
+    "name": "Nabd"
+  },
+  "common": {
+    "loading": "Loading…",
+    "retry": "Try again",
+    "dismiss": "Dismiss",
+    "comingSoon": "This page is built in a later step.",
+    "language": "Language"
+  },
+  "locale": {
+    "switchTo": "العربية",
+    "persistFailed": "The language changed on this device, but we could not save it to your account."
+  },
+  "auth": {
+    "title": "Sign in",
+    "subtitle": "Sign in to your workspace.",
+    "email": "Email",
+    "password": "Password",
+    "signIn": "Sign in",
+    "signingIn": "Signing in…",
+    "emailRequired": "Enter your email address.",
+    "passwordRequired": "Enter your password.",
+    "invalid": "Email or password is incorrect.",
+    "tenantDisabled": "This workspace is disabled. Ask the platform administrator to enable it.",
+    "sessionExpired": "Your session ended. Sign in again.",
+    "signOut": "Sign out",
+    "signedOut": "You are signed out.",
+    "backoff": "Too many attempts. Wait a moment, then try again."
+  },
+  "nav": {
+    "label": "Main navigation",
+    "overview": "Overview",
+    "assets": "Assets",
+    "alerts": "Alerts",
+    "settings": "Settings",
+    "platform": "Platform"
+  },
+  "pages": {
+    "overview": {
+      "title": "Overview",
+      "body": "Live status and the newest alerts arrive in a later step."
+    },
+    "assets": {
+      "title": "Assets",
+      "body": "The asset list arrives in a later step."
+    },
+    "alerts": {
+      "title": "Alerts",
+      "body": "The alert feed arrives in a later step."
+    },
+    "settings": {
+      "title": "Settings",
+      "body": "Account and notification settings arrive in later steps."
+    },
+    "platform": {
+      "title": "Platform",
+      "body": "The platform console arrives in a later step."
+    }
+  },
+  "errors": {
+    "network": "We could not reach the server.",
+    "unexpected": "Something went wrong."
+  }
+}
