@@ -74,9 +74,17 @@ internal static class Program
     {
         var topic = $"t/{options.TenantId}/dev/{deviceId}/v1"; // 05 §4 — the wire law, composed from parts
         var scenario = ScenarioRegistry.Create(options.Scenario, options.Channels,
-            options.SpikeTo, options.SpikeEvery, options.SpikeHoldFor);
+            options.SpikeTo, options.SpikeEvery, options.SpikeHoldFor,
+            options.Rate, options.WarmupChannel, options.WarmupPeak);
 
         Console.WriteLine($"nabd-simulator v0 — device {deviceId} → {options.Host}:{options.Port} topic {topic} @ {options.Rate}/s ({options.Scenario})");
+
+        // P4 spec 10: the warmup story's own markers. Derived once, from the
+        // same pure profile the wire uses — never re-derived from wall clock.
+        var warmup = (scenario as WarmupDemoScenario)?.Profile;
+        var crossedAt = warmup?.FirstAbove(WarmupDemo.LimitCelsius);
+        var windowAt = warmup?.FirstWindowMet(WarmupDemo.LimitCelsius, WarmupDemo.SignalWindowSeconds);
+        string? warmupPhase = null;
 
         var random = new Random();
         var seq = 0L;
@@ -126,7 +134,9 @@ internal static class Program
                     if (Dropout.Due(options, DateTimeOffset.UtcNow - startedAt))
                     {
                         await DisconnectQuietlyAsync(broker);   // graceful — no error spam, exit code 0
-                        Console.WriteLine(Dropout.StopLine(options.RunFor!.Value, seq));
+                        Console.WriteLine(options.Scenario == "warmup-demo"
+                            ? WarmupDemo.StopLine(options.RunFor!.Value, seq)
+                            : Dropout.StopLine(options.RunFor!.Value, seq));
                         return 0;
                     }
 
@@ -152,6 +162,23 @@ internal static class Program
                         Console.WriteLine($"[{DateTimeOffset.UtcNow:HH:mm:ss}] seq={seq + 1} → {topic}");
                     }
                     seq++;   // ownership lands with the last copy's PUBACK
+
+                    // P4 spec 10: the owner watches the story unfold on the wire —
+                    // phase changes once each, then the crossing and the firing
+                    // moment (all three derived from the published seq).
+                    if (warmup is not null)
+                    {
+                        var phase = warmup.PhaseAt(seq);
+                        if (phase != warmupPhase)
+                        {
+                            warmupPhase = phase;
+                            Console.WriteLine($"[{DateTimeOffset.UtcNow:HH:mm:ss}] warmup: phase={phase}");
+                        }
+                        if (seq == crossedAt)
+                            Console.WriteLine($"[{DateTimeOffset.UtcNow:HH:mm:ss}] warmup: crossed {WarmupDemo.LimitCelsius:F1}°C at seq={seq}");
+                        if (seq == windowAt)
+                            Console.WriteLine($"[{DateTimeOffset.UtcNow:HH:mm:ss}] warmup: {WarmupDemo.SignalWindowSeconds:F0} s above {WarmupDemo.LimitCelsius:F1}°C at seq={seq}");
+                    }
 
                     nextDue = nextDue.AddSeconds(1 / options.Rate);
                     var paceDelay = nextDue - DateTimeOffset.UtcNow;

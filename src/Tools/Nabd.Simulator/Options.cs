@@ -30,6 +30,12 @@ public sealed class SimulatorOptions
     /// (the single-device law, unchanged).
     /// </summary>
     public double? StartEpoch { get; init; }
+    /// <summary>
+    /// P4 spec 10 (D10h): the channel the warmup story warms, and its peak.
+    /// Both are warmup-demo's contract; other scenarios ignore them.
+    /// </summary>
+    public string WarmupChannel { get; init; } = "temperature";
+    public double WarmupPeak { get; init; } = 12.0;
     public required IReadOnlyList<(double Value, string Channel)> Channels { get; init; }
 
     private const string Usage =
@@ -41,13 +47,13 @@ public sealed class SimulatorOptions
           --tenant   <tenantId>     (required — composes the topic t/{tenant}/dev/{device}/v1)
           --devices-file <path>     (FLEET mode: one process carries many devices;
                                      lines are dev<TAB>token; NOT combinable with --device/--token)
-          --scenario steady         (v0 knows: steady, spike, dropout)
+          --scenario steady         (v0 knows: steady, spike, dropout, warmup-demo)
           --rate     <msgs/s>       (default 1)
           --channel  <key>=<value>  (repeatable, at least one required)
           --spike-to <peak>         (spike: the peak value)
           --every    <n>            (spike: a plateau opens every n-th cycle)
           --hold-for <s>            (spike: the plateau lasts s cycles)
-          --run-for  <s>            (dropout: publish for s seconds, then stop CLEANLY)
+          --run-for  <s>            (dropout | warmup-demo: publish for s seconds, then stop CLEANLY)
           --dup      <k>            (publish each message k times — the duplicate-flood rider; default 1)
           --start-epoch <s>         (FLEET: anchor the deadline grid at this unix epoch —
                                      the fleet publishes the profile exactly; default = connect)
@@ -64,6 +70,31 @@ public sealed class SimulatorOptions
         return (parts[0], parts[1]);
     }
 
+    /// <summary>
+    /// P4 spec 10: warmup-demo's flags are ITS contract (the spec-08 law) —
+    /// refuse, never guess. It needs a scripted end, a channel that exists, and
+    /// a peak above that channel's baseline; otherwise the story is a lie.
+    /// </summary>
+    private static void ValidateWarmup(
+        string scenario, double? runFor, string warmupChannel, double warmupPeak,
+        IReadOnlyList<(double Value, string Channel)> channels)
+    {
+        if (scenario != "warmup-demo") return;
+
+        if (runFor is null)
+            throw new ArgumentException(
+                "--scenario warmup-demo requires --run-for (a demo has a scripted end)\n" + Usage);
+
+        var baseline = channels.Where(c => c.Channel == warmupChannel).ToList();
+        if (baseline.Count == 0)
+            throw new ArgumentException(
+                $"--warmup-channel '{warmupChannel}' is not one of the --channel keys\n" + Usage);
+
+        if (warmupPeak <= baseline[0].Value)
+            throw new ArgumentException(
+                $"--warmup-peak {warmupPeak} must be above the baseline {baseline[0].Value} of '{warmupChannel}'\n" + Usage);
+    }
+
     public static SimulatorOptions Parse(string[] args)
     {
         string host = "localhost";
@@ -76,6 +107,8 @@ public sealed class SimulatorOptions
         var channels = new List<(double Value, string Channel)>();
         string? devicesFile = null;
         double? startEpoch = null;
+        var warmupChannel = "temperature";
+        var warmupPeak = 12.0;
 
         for (var i = 0; i < args.Length; i += 2)
         {
@@ -137,6 +170,14 @@ public sealed class SimulatorOptions
                         throw new ArgumentException($"--hold-for must be a positive integer: '{args[i + 1]}'\n{Usage}");
                     spikeHoldFor = holdForValue;
                     break;
+                case "--warmup-channel":
+                    warmupChannel = args[i + 1];
+                    break;
+                case "--warmup-peak":
+                    if (!double.TryParse(args[i + 1], out var warmupPeakValue))
+                        throw new ArgumentException($"--warmup-peak must be a number: '{args[i + 1]}'\n{Usage}");
+                    warmupPeak = warmupPeakValue;
+                    break;
                 default:
                     throw new ArgumentException($"unknown argument '{args[i]}'\n{Usage}");
                 }
@@ -151,6 +192,9 @@ public sealed class SimulatorOptions
                     "--devices-file cannot combine with --device/--token — pick ONE mode\n" + Usage);
             if (tenant is null)
                 throw new ArgumentException("--tenant is required in fleet mode\n" + Usage);
+
+            // The warmup contract holds in fleet mode too (a fleet can warm N fridges).
+            ValidateWarmup(scenario, runFor, warmupChannel, warmupPeak, channels);
 
             // THE FILE: every line dev<TAB>token, uuid-checked at boot — the
             // live-ladder lesson (2026-11-12) applied to the whole fleet.
@@ -171,6 +215,7 @@ public sealed class SimulatorOptions
                 TenantId = tenant, Devices = devices, Scenario = scenario, Rate = rate,
                 RunFor = runFor, Dup = dup, SpikeTo = spikeTo,
                 SpikeEvery = spikeEvery, SpikeHoldFor = spikeHoldFor,
+                WarmupChannel = warmupChannel, WarmupPeak = warmupPeak,
                 Channels = channels, StartEpoch = startEpoch,
             };
         }
@@ -189,6 +234,7 @@ public sealed class SimulatorOptions
                 "--scenario spike requires --spike-to, --every and --hold-for\n" + Usage);
         if (scenario == "dropout" && runFor is null)
             throw new ArgumentException("--scenario dropout requires --run-for\n" + Usage);
+        ValidateWarmup(scenario, runFor, warmupChannel, warmupPeak, channels);
 
         return new SimulatorOptions
         {
@@ -196,6 +242,7 @@ public sealed class SimulatorOptions
             TenantId = tenant, Scenario = scenario, Rate = rate,
             RunFor = runFor, Dup = dup, SpikeTo = spikeTo,
             SpikeEvery = spikeEvery, SpikeHoldFor = spikeHoldFor,
+            WarmupChannel = warmupChannel, WarmupPeak = warmupPeak,
             Channels = channels, StartEpoch = startEpoch,
         };
     }

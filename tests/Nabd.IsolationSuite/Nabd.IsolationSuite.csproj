@@ -44,6 +44,8 @@
     <ProjectReference Include="..\..\src\Modules\Alerting\Nabd.Alerting\Nabd.Alerting.csproj" />
     <!-- spec 08: the suite drives the Notifications room's channel + log directly -->
     <ProjectReference Include="..\..\src\Modules\Notifications\Nabd.Notifications\Nabd.Notifications.csproj" />
+    <!-- P4 spec 10: the acceptance E2E boots the REAL P4 composition in-process -->
+    <ProjectReference Include="..\..\src\Hosts\Nabd.ProcessingHost\Nabd.ProcessingHost.csproj" />
   </ItemGroup>
 
   <!-- FrameworkReference does NOT flow transitively from a ProjectReference —
