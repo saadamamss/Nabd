@@ -164,6 +164,12 @@ public sealed class DeviceLifecycle(AssetsDb db, DeviceTokenHasher hasher) : IDe
             if (device is null)
                 return Result<DeviceMintResult>.Failure(DeviceErrors.DeviceNotFound);
 
+            // revoke is TERMINAL (P5 spec 02): the row stays is_active = false, and
+            // 0014's token lookup requires it — minting here would hand out a
+            // credential that can never verify. Refuse instead of lying.
+            if (!device.IsActive)
+                return Result<DeviceMintResult>.Failure(DeviceErrors.DeviceRevoked);
+
             var token = DeviceTokenHasher.Mint();
             await using (var cmd = new NpgsqlCommand("""
                 UPDATE assets.devices

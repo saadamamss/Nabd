@@ -63,7 +63,7 @@ function timeToMinutes(value: string): number {
             <label class="ui-field">
               <span>{{ 'rules.channel' | transloco }}</span>
               <select formControlName="channelKey">
-                @for (channel of channels(); track channel.key) {
+                @for (channel of openChannels(); track channel.key) {
                   <option [value]="channel.key">{{ channelName(channel) }} · {{ channel.unit }}</option>
                 }
               </select>
@@ -92,9 +92,16 @@ function timeToMinutes(value: string): number {
               </select>
             </label>
           </div>
+          @if (openChannels().length === 0) {
+            <p class="ui-note">{{ 'rules.noFreeChannel' | transloco }}</p>
+          }
           <p class="ui-hint">{{ 'rules.quietLater' | transloco }}</p>
           <div class="ui-actions">
-            <button class="ui-btn is-primary" type="submit" [disabled]="createForm.invalid || busy()">
+            <button
+              class="ui-btn is-primary"
+              type="submit"
+              [disabled]="createForm.invalid || busy() || openChannels().length === 0"
+            >
               {{ (busy() ? 'rules.creating' : 'rules.create') | transloco }}
             </button>
           </div>
@@ -299,7 +306,9 @@ export class RulesPage implements OnInit {
   readonly deviceId = this.route.snapshot.paramMap.get('deviceId') ?? '';
   readonly assetId = signal(this.route.snapshot.queryParamMap.get('assetId') ?? '');
   readonly templateId = this.route.snapshot.queryParamMap.get('templateId') ?? '';
-  readonly channels = signal<{ key: string; nameAr: string; nameEn: string; unit: string }[]>([]);
+  readonly channels = signal<
+    { key: string; nameAr: string; nameEn: string; unit: string; dataType: string }[]
+  >([]);
 
   readonly rules = signal<RuleRow[]>([]);
   readonly loading = signal(true);
@@ -313,6 +322,25 @@ export class RulesPage implements OnInit {
   readonly canManage = computed(() => this.auth.user()?.role !== 'viewer');
   readonly thresholds = computed(() => this.rules().filter((rule) => rule.ruleType !== 'offline'));
   readonly offline = computed(() => this.rules().find((rule) => rule.ruleType === 'offline'));
+
+  /**
+   * The create form can only offer a channel the server will actually accept:
+   * numeric (a boolean channel never carries a range — the door would take it and
+   * the rule could never fire) and not already guarded by an `outside_range`
+   * rule (the template presets seed those at mint — `0021`'s UNIQUE answers a
+   * second one with `rules:duplicate_rule`). A picker that invites a guaranteed
+   * 422 is a fake affordance; an empty list says why instead.
+   */
+  readonly openChannels = computed(() => {
+    const taken = new Set(
+      this.rules()
+        .filter((rule) => rule.ruleType === 'outside_range')
+        .map((rule) => rule.channelKey),
+    );
+    return this.channels().filter(
+      (channel) => channel.dataType === 'number' && !taken.has(channel.key),
+    );
+  });
 
   readonly createForm = this.fb.group({
     channelKey: ['', Validators.required],
@@ -346,7 +374,6 @@ export class RulesPage implements OnInit {
         next: (templates) => {
           const template = templates.find((item) => item.templateId === this.templateId);
           this.channels.set(template?.channels ?? []);
-          if (template?.channels[0]) this.createForm.patchValue({ channelKey: template.channels[0].key });
         },
         error: (error: unknown) => this.error.set(describeApiError(error)),
       });
@@ -360,6 +387,7 @@ export class RulesPage implements OnInit {
       next: (rules) => {
         this.rules.set(rules);
         this.loading.set(false);
+        this.repickChannel();
         const guard = rules.find((rule) => rule.ruleType === 'offline');
         if (guard) {
           this.offlineForm.patchValue({
@@ -382,7 +410,7 @@ export class RulesPage implements OnInit {
     this.creating.update((open) => !open);
     this.error.set(null);
     this.createForm.reset({
-      channelKey: this.channels()[0]?.key ?? '',
+      channelKey: this.openChannels()[0]?.key ?? '',
       thresholdLow: null,
       thresholdHigh: null,
       durationSeconds: 60,
@@ -391,9 +419,21 @@ export class RulesPage implements OnInit {
     });
   }
 
+  private repickChannel(): void {
+    const current = this.createForm.getRawValue().channelKey;
+    if (this.openChannels().some((channel) => channel.key === current)) return;
+    this.createForm.patchValue({ channelKey: this.openChannels()[0]?.key ?? '' });
+  }
+
   create(): void {
     if (this.createForm.invalid || this.busy()) return;
     const value = this.createForm.getRawValue();
+    if (!this.openChannels().some((channel) => channel.key === value.channelKey)) {
+      // nothing lawful to create — the form says why (openChannels empty) or the
+      // picker was stale; never fire a request the door will refuse
+      this.error.set({ code: null, key: 'errors.invalidRule' });
+      return;
+    }
     if (value.thresholdLow == null && value.thresholdHigh == null) {
       this.error.set({ code: null, key: 'errors.invalidRule' });
       return;
@@ -404,7 +444,9 @@ export class RulesPage implements OnInit {
     this.api
       .createRule(this.deviceId, {
         channelKey: value.channelKey,
-        ruleType: 'threshold',
+        // the door's law (DeviceRules.ThresholdsValid): low + high = outside_range;
+        // "threshold" was never a rule type and every create answered 422
+        ruleType: 'outside_range',
         thresholdLow: value.thresholdLow,
         thresholdHigh: value.thresholdHigh,
         durationSeconds: value.durationSeconds ?? 60,

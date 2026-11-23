@@ -147,7 +147,8 @@
     "day6": "Saturday",
     "utcNote": "UTC",
     "thresholdOffline": "Offline",
-    "backToDevice": "Back to devices"
+    "backToDevice": "Back to devices",
+    "noFreeChannel": "Every numeric channel already has a range rule — edit it above instead of adding a second one."
   },
   "locale": {
     "switchTo": "العربية",
@@ -238,6 +239,7 @@
     "duplicateRule": "A rule for this channel and limits already exists.",
     "invalidRule": "Check the rule's limits, duration and cooldown.",
     "invalidMuteWindow": "A quiet window is invalid: day 0–6 and start before end, within a day.",
-    "muteWindowOverlap": "Two quiet windows overlap."
+    "muteWindowOverlap": "Two quiet windows overlap.",
+    "deviceRevoked": "This device is revoked. A revoked token cannot be restored — recovery is a new device."
   }
 }

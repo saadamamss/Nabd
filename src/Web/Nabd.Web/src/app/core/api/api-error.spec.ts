@@ -29,6 +29,7 @@ const SERVER_CODES = [
   'identity:tenant_not_found',
   'assets:asset_not_found',
   'assets:device_not_found',
+  'assets:device_revoked',
   'rules:rule_not_found',
   'rules:device_not_found',
   'identity:email_taken',

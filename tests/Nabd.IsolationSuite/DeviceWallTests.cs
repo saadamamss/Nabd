@@ -157,6 +157,65 @@ public sealed class DeviceWallTests(PostgresFixture pg) : IClassFixture<Postgres
         Assert.NotNull(row.TokenRevokedAtUtc);
     }
 
+    // ---- fact 3b: revoke is TERMINAL — a reissue on a revoked device is refused
+    // and mints NOTHING (P5 spec 02 smoke, 2026-11-24). The UI already hides the
+    // button; without this guard the door answered 200 with a token that 0014 can
+    // never verify (is_active = false), i.e. a credential dead on arrival.
+
+    [Fact]
+    public async Task reissue_on_a_revoked_device_is_refused_and_mints_nothing()
+    {
+        var a = await RegisterAsync("c2");
+        var templateId = await EnsureTemplateAsync();
+        var assetId = await EnsureAssetAsync(a, templateId);
+        var devices = new DeviceLifecycle(pg.Assets, new DeviceTokenHasher());
+        var admin = AdminOf(a);
+
+        var minted = await devices.CreateDeviceAsync(admin, new DeviceCreateRequest(
+            TargetTenantId: a.Tenant.TenantId, AssetId: assetId, Name: "Sensor 03b"));
+        Assert.True(minted.IsSuccess, $"mint failed: {minted.Error}");
+
+        var revoked = await devices.RevokeDeviceAsync(admin, minted.Value.Device.DeviceId);
+        Assert.True(revoked.IsSuccess, $"revoke failed: {revoked.Error}");
+
+        string hashBefore;
+        await using (var conn = await pg.Owner.OpenConnectionAsync())
+        {
+            await using var cmd = new NpgsqlCommand(
+                "SELECT token_hash FROM assets.devices WHERE id = @d;", conn);
+            cmd.Parameters.AddWithValue("d", minted.Value.Device.DeviceId);
+            hashBefore = (string)(await cmd.ExecuteScalarAsync())!;
+        }
+
+        var reissued = await devices.ReissueTokenAsync(admin, minted.Value.Device.DeviceId);
+
+        Assert.False(reissued.IsSuccess, "a revoked device must not be reissued");   // the guard
+        Assert.Equal(DeviceErrors.DeviceRevoked, reissued.Error);
+
+        await using (var conn = await pg.Owner.OpenConnectionAsync())
+        {
+            await using var cmd = new NpgsqlCommand(
+                "SELECT token_hash, is_active, token_revoked_at FROM assets.devices WHERE id = @d;", conn);
+            cmd.Parameters.AddWithValue("d", minted.Value.Device.DeviceId);
+            await using var reader = await cmd.ExecuteReaderAsync();
+            Assert.True(await reader.ReadAsync());
+            Assert.Equal(hashBefore, reader.GetString(0));     // no new credential written
+            Assert.False(reader.GetBoolean(1));                // still revoked
+            Assert.False(reader.IsDBNull(2));                  // token_revoked_at NOT cleared
+        }
+
+        // and no extra "issued" line was logged for a credential nobody got
+        await using (var log = await pg.Owner.OpenConnectionAsync())
+        {
+            await using var cmd = new NpgsqlCommand("""
+                SELECT count(*) FROM assets.device_credentials_log
+                WHERE device_id = @d AND action = 'issued'
+                """, log);
+            cmd.Parameters.AddWithValue("d", minted.Value.Device.DeviceId);
+            Assert.Equal(1L, (long)(await cmd.ExecuteScalarAsync())!);
+        }
+    }
+
     // ---- fact 4: cross-tenant device ops are INVISIBLE (404 law) -----------------
 
     [Fact]
