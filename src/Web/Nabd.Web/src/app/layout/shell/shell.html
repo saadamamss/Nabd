@@ -82,7 +82,7 @@
         <div class="user">
           <span class="avatar" aria-hidden="true">{{ initials() }}</span>
           <span class="user-meta">
-            <span class="user-email" [attr.title]="user.email">{{ user.email }}</span>
+            <span class="user-email" [attr.title]="user.email">{{ displayName() }}</span>
             <span class="user-role">{{ roleKey() | transloco }}</span>
           </span>
         </div>

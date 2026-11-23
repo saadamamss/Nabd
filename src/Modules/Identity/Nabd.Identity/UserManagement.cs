@@ -68,7 +68,8 @@ public sealed class UserManagement : IUserManagement
 
             await tx.CommitAsync(ct);
             return Result<UserSnapshot>.Success(
-                new UserSnapshot(userId, request.TargetTenantId, request.Email, request.RoleCode, request.Locale));
+                new UserSnapshot(userId, request.TargetTenantId, request.Email, request.RoleCode, request.Locale,
+                    request.DisplayName));
         }
         catch (PostgresException ex) when (ex.SqlState == "23505")
         {
@@ -112,7 +113,8 @@ public sealed class UserManagement : IUserManagement
                 await using var reader = await cmd.ExecuteReaderAsync(ct);
 
                 while (await reader.ReadAsync(ct)) list.Add(new UserSnapshot(
-                    reader.GetGuid(0), reader.GetGuid(1), reader.GetString(2), reader.GetString(5), reader.GetString(4)));
+                    reader.GetGuid(0), reader.GetGuid(1), reader.GetString(2), reader.GetString(5),
+                    reader.GetString(4), reader.GetString(3)));
             }
 
             await tx.CommitAsync(ct);
@@ -299,7 +301,7 @@ public sealed class UserManagement : IUserManagement
         if (!await reader.ReadAsync(ct)) return null;
         var snap = new UserSnapshot(
             reader.GetGuid(0), reader.GetGuid(1),
-            reader.GetString(2), reader.GetString(5), reader.GetString(4));
+            reader.GetString(2), reader.GetString(5), reader.GetString(4), reader.GetString(3));
         return (snap, reader.GetString(5));
     }
 

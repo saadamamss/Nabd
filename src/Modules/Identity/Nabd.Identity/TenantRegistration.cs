@@ -84,7 +84,8 @@ public sealed class TenantRegistration : ITenantRegistration
             await tx.CommitAsync(ct);
 
             var tenant = new TenantSnapshot(tenantId, request.Name, true);
-            var admin = new UserSnapshot(userId, tenantId, request.AdminEmail, "tenant_admin", request.AdminLocale);
+            var admin = new UserSnapshot(userId, tenantId, request.AdminEmail, "tenant_admin", request.AdminLocale,
+                request.AdminDisplayName);
             return Result<TenantRegistrationResult>.Success(new TenantRegistrationResult(tenant, admin));
         }
         catch (PostgresException ex) when (ex.SqlState == "23505")

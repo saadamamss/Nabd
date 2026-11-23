@@ -173,3 +173,308 @@ input {
     transition-duration: 0.01ms !important;
   }
 }
+
+// ---- Admin surfaces (P5 spec 02) ------------------------------------------
+// One vocabulary for the four admin pages: panels, tables, fields, buttons.
+// Logical properties only, so the same classes mirror under `dir="rtl"`.
+.ui-page {
+  max-inline-size: 83rem;
+}
+
+.ui-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1.25rem 2rem;
+  margin-block-end: 1.75rem;
+}
+
+.ui-kicker {
+  color: var(--app-brand);
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.ui-title {
+  margin-block: 0.35rem 0.5rem;
+  font-size: clamp(1.6rem, 3vw, 2.1rem);
+  letter-spacing: -0.015em;
+}
+
+.ui-sub {
+  max-inline-size: 46rem;
+  color: var(--app-text-muted);
+  line-height: 1.55;
+}
+
+.ui-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.65rem;
+  margin-block-end: 1rem;
+}
+
+.ui-panel {
+  padding: clamp(1rem, 2.4vw, 1.5rem);
+  border: 1px solid var(--app-border);
+  border-radius: var(--app-radius-lg);
+  background: var(--app-surface);
+  box-shadow: var(--app-shadow-sm);
+}
+
+.ui-panel + .ui-panel {
+  margin-block-start: 1rem;
+}
+
+.ui-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+  gap: 0.9rem 1rem;
+}
+
+.ui-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  min-inline-size: 0;
+}
+
+.ui-field > span {
+  color: var(--app-text-muted);
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.ui-field input,
+.ui-field select {
+  inline-size: 100%;
+  padding-block: 0.6rem;
+  padding-inline: 0.75rem;
+  border: 1px solid var(--app-border-strong);
+  border-radius: var(--app-radius-sm);
+  background: var(--app-surface);
+  color: var(--app-text);
+}
+
+.ui-field small {
+  color: var(--app-text-muted);
+  font-size: 0.75rem;
+}
+
+.ui-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--app-text);
+  font-size: 0.875rem;
+}
+
+.ui-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+  margin-block-start: 1.1rem;
+}
+
+.ui-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  padding-block: 0.55rem;
+  padding-inline: 0.9rem;
+  border: 1px solid var(--app-border-strong);
+  border-radius: 999px;
+  background: var(--app-surface);
+  color: var(--app-text);
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background var(--app-duration) var(--app-easing);
+}
+
+.ui-btn:hover:not(:disabled) {
+  background: var(--app-surface-muted);
+}
+
+.ui-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.ui-btn.is-primary {
+  border-color: transparent;
+  background: var(--app-brand);
+  color: var(--app-brand-contrast);
+}
+
+.ui-btn.is-primary:hover:not(:disabled) {
+  background: var(--app-brand-strong);
+}
+
+.ui-btn.is-danger {
+  border-color: color-mix(in srgb, var(--app-alert) 45%, transparent);
+  color: var(--app-alert);
+}
+
+.ui-btn.is-small {
+  padding-block: 0.35rem;
+  padding-inline: 0.7rem;
+  font-size: 0.8125rem;
+}
+
+.ui-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--app-border);
+  border-radius: var(--app-radius-lg);
+  background: var(--app-surface);
+}
+
+.ui-table {
+  inline-size: 100%;
+  border-collapse: collapse;
+  font-size: 0.9375rem;
+}
+
+.ui-table th,
+.ui-table td {
+  padding-block: 0.75rem;
+  padding-inline: 1rem;
+  text-align: start;
+  vertical-align: middle;
+}
+
+.ui-table thead th {
+  border-block-end: 1px solid var(--app-border);
+  background: var(--app-surface-muted);
+  color: var(--app-text-muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.ui-table tbody tr + tr td {
+  border-block-start: 1px solid var(--app-border);
+}
+
+.ui-table select {
+  padding-block: 0.35rem;
+  padding-inline: 0.5rem;
+  border: 1px solid var(--app-border-strong);
+  border-radius: var(--app-radius-sm);
+  background: var(--app-surface);
+  color: var(--app-text);
+  font: inherit;
+}
+
+.ui-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding-block: 0.2rem;
+  padding-inline: 0.55rem;
+  border-radius: 999px;
+  background: var(--app-surface-muted);
+  color: var(--app-text-muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.ui-badge.is-warn {
+  background: color-mix(in srgb, var(--app-warning) 14%, transparent);
+  color: var(--app-warning);
+}
+
+.ui-badge.is-critical {
+  background: color-mix(in srgb, var(--app-alert) 14%, transparent);
+  color: var(--app-alert);
+}
+
+.ui-badge.is-muted {
+  background: var(--app-surface-muted);
+  color: var(--app-offline);
+}
+
+.ui-fieldset {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.ui-note {
+  margin-block: 0.75rem 0;
+  padding-block: 0.7rem;
+  padding-inline: 0.9rem;
+  border: 1px solid var(--app-border);
+  border-radius: var(--app-radius-md);
+  background: var(--app-surface-muted);
+  color: var(--app-text);
+  font-size: 0.875rem;
+}
+
+.ui-note.is-error {
+  border-color: color-mix(in srgb, var(--app-alert) 40%, transparent);
+  background: color-mix(in srgb, var(--app-alert) 8%, var(--app-surface));
+}
+
+.ui-note code {
+  display: block;
+  margin-block-start: 0.2rem;
+  color: var(--app-text-muted);
+  font-size: 0.75rem;
+}
+
+.ui-empty {
+  padding: 2rem 1rem;
+  color: var(--app-text-muted);
+  text-align: center;
+}
+
+.ui-hint {
+  color: var(--app-text-muted);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+}
+
+.ui-token {
+  display: block;
+  overflow-wrap: anywhere;
+  padding: 0.85rem 1rem;
+  border: 1px dashed var(--app-border-strong);
+  border-radius: var(--app-radius-md);
+  background: var(--app-surface-muted);
+  font-family: ui-monospace, SFMono-Regular, menlo, monospace;
+  font-size: 0.875rem;
+  direction: ltr;
+  text-align: start;
+  user-select: all;
+}
+
+.ui-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  padding: 1.25rem;
+  background: rgb(6 12 24 / 55%);
+}
+
+.ui-dialog {
+  inline-size: min(34rem, 100%);
+  max-block-size: 85vh;
+  overflow-y: auto;
+  padding: clamp(1.15rem, 3vw, 1.6rem);
+  border-radius: var(--app-radius-lg);
+  background: var(--app-surface);
+  box-shadow: var(--app-shadow-lg);
+}
+
+.ui-dialog h2 {
+  font-size: 1.25rem;
+}

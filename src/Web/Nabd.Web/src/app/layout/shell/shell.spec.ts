@@ -6,7 +6,7 @@ import { provideTestTransloco } from '../../testing/test-transloco';
 import { AuthService } from '../../core/auth/auth.service';
 import { Shell } from './shell';
 
-function session(role: string) {
+function session(role: string, displayName: string | null = null) {
   return {
     user: {
       userId: 'u1',
@@ -14,6 +14,7 @@ function session(role: string) {
       email: 'admin@nabd.test',
       role,
       locale: 'en',
+      displayName,
     },
     accessToken: 'access-1',
   };
@@ -75,6 +76,23 @@ describe('Shell', () => {
 
     const topbar = (fixture.nativeElement as HTMLElement).querySelector('.topbar');
     expect(topbar?.textContent).toContain('Nabd');
+  });
+
+  it('shows the signed-in name from the login snapshot, falling back to the email', async () => {
+    auth.apply(session('admin', 'Ada Admin'));
+
+    const fixture = TestBed.createComponent(Shell);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    http.expectOne('/api/v1/tenants/t1').flush({ tenantId: 't1', name: 'Co', isActive: true });
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect((fixture.nativeElement as HTMLElement).textContent).toContain('Ada Admin');
+
+    auth.apply(session('admin', null));
+    fixture.detectChanges();
+    expect((fixture.nativeElement as HTMLElement).textContent).toContain('admin@nabd.test');
   });
 
   it('shows Platform only to platform_admin', async () => {

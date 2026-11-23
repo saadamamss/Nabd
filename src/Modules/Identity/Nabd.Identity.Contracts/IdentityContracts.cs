@@ -7,7 +7,14 @@ public sealed record UserCreated(Guid TenantId, Guid UserId, string Email, strin
 /// <summary>Identity room's outbound event: permissions/roles changed — listening rooms must refresh their cache.</summary>
 public sealed record RoleChanged(Guid TenantId, Guid UserId, string Role) : IntegrationEvent;
 
-public sealed record UserSnapshot(Guid UserId, Guid TenantId, string Email, string Role, string Locale);
+/// <summary>
+/// The user as every door exposes them. <c>DisplayName</c> is defaulted so the
+/// five existing construction sites stay source-compatible (P5 spec 02, A9);
+/// every site fills it — the column is NOT NULL in 0001.
+/// </summary>
+public sealed record UserSnapshot(
+    Guid UserId, Guid TenantId, string Email, string Role, string Locale,
+    string? DisplayName = null);
 
 public sealed record TenantSnapshot(Guid TenantId, string Name, bool IsActive);
 
