@@ -198,6 +198,22 @@ describe('RulesPage', () => {
     await fixture.whenStable();
   });
 
+  it('shows each quiet window on its OWN day (selectedness on the option, not the select)', async () => {
+    const { fixture, http, page } = setup();
+    fixture.detectChanges();
+    http.expectOne('/api/v1/templates').flush([TEMPLATE]);
+    http.expectOne('/api/v1/devices/d1/rules').flush([THRESHOLD, OFFLINE]);
+    await fixture.whenStable();
+
+    page.startEdit({ ...THRESHOLD, muteWindows: [{ dayOfWeek: 2, startMinute: 780, endMinute: 900 }] });
+    fixture.detectChanges();
+
+    const daySelect = [
+      ...(fixture.nativeElement as HTMLElement).querySelectorAll('select'),
+    ].find((select) => select.options.length === 7) as HTMLSelectElement;
+    expect(daySelect.value).toBe('2');
+  });
+
   it('tunes the seeded offline guard without sending thresholds or windows', async () => {
     const { fixture, http, page } = setup();
     fixture.detectChanges();

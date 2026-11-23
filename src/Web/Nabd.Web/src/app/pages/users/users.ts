@@ -131,13 +131,17 @@ const ROLES = [
                   <td>
                     @if (canManage()) {
                       <select
-                        [value]="row.role"
                         [disabled]="busy()"
                         (change)="changeRole(row, $any($event.target).value)"
                         [attr.aria-label]="'users.role' | transloco"
                       >
+                        <!-- selectedness rides the OPTION, not the select: a [value] on the
+                             select is applied before @for creates the options, so it fell
+                             back to the first one (a tenant_admin read as "viewer") -->
                         @for (role of roles; track role.code) {
-                          <option [value]="role.code">{{ role.key | transloco }}</option>
+                          <option [value]="role.code" [selected]="role.code === row.role">
+                            {{ role.key | transloco }}
+                          </option>
                         }
                       </select>
                     } @else {
@@ -146,13 +150,12 @@ const ROLES = [
                   </td>
                   <td>
                     <select
-                      [value]="row.locale"
                       [disabled]="busy() || (!canManage() && row.userId !== me())"
                       (change)="changeLocale(row, $any($event.target).value)"
                       [attr.aria-label]="'users.locale' | transloco"
                     >
-                      <option value="ar">{{ 'locale.ar' | transloco }}</option>
-                      <option value="en">{{ 'locale.en' | transloco }}</option>
+                      <option value="ar" [selected]="row.locale === 'ar'">{{ 'locale.ar' | transloco }}</option>
+                      <option value="en" [selected]="row.locale === 'en'">{{ 'locale.en' | transloco }}</option>
                     </select>
                   </td>
                   @if (canManage()) {

@@ -155,9 +155,11 @@ function timeToMinutes(value: string): number {
               <div class="ui-grid">
                 <label class="ui-field">
                   <span>{{ 'rules.day' | transloco }}</span>
-                  <select [value]="window.dayOfWeek" (change)="setDay($index, $any($event.target).value)">
+                  <select (change)="setDay($index, $any($event.target).value)">
                     @for (day of days; track day) {
-                      <option [value]="day">{{ 'rules.day' + day | transloco }}</option>
+                      <option [value]="day" [selected]="day === window.dayOfWeek">
+                        {{ 'rules.day' + day | transloco }}
+                      </option>
                     }
                   </select>
                 </label>

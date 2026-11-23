@@ -64,6 +64,27 @@ function setup(session: typeof ADMIN_SESSION | typeof VIEWER_SESSION): {
 describe('UsersPage', () => {
   afterEach(() => TestBed.inject(HttpTestingController).verify());
 
+  it('renders each row\'s real role and locale in its selects (never the first option)', async () => {
+    const { fixture, http } = setup(ADMIN_SESSION);
+    fixture.detectChanges();
+
+    http.expectOne('/api/v1/tenants/t1/users').flush(ROWS);
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const selects = [
+      ...(fixture.nativeElement as HTMLElement).querySelectorAll('select'),
+    ] as HTMLSelectElement[];
+    // row 1: role select + locale select, row 2: role select + locale select
+    expect(selects.map((select) => select.value)).toEqual([
+      'tenant_admin',
+      'en',
+      'viewer',
+      'ar',
+    ]);
+    expect(selects[0].selectedOptions[0]?.textContent?.trim()).toBe('Workspace admin');
+  });
+
   it('shows the display name and falls back to the email, never a blank cell', async () => {
     const { fixture, http, page } = setup(ADMIN_SESSION);
     fixture.detectChanges();
