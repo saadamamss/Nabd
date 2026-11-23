@@ -449,10 +449,10 @@ if (!active)
 
         try
         {
-            string? email = null, locale = null, role = null;
+            string? email = null, locale = null, role = null, displayName = null;
 
             await using (var cmd = new NpgsqlCommand("""
-                SELECT u.email::text, u.locale, COALESCE(r.role_code,'viewer') FROM identity.users u
+                SELECT u.email::text, u.display_name, u.locale, COALESCE(r.role_code,'viewer') FROM identity.users u
                 LEFT JOIN identity.user_roles r ON r.user_id = u.id AND r.tenant_id = u.tenant_id
                 WHERE u.id = @u AND u.tenant_id = @t
                 """, conn, tx))
@@ -465,8 +465,9 @@ if (!active)
                 if (await reader.ReadAsync(ct))
                 {
                     email = reader.GetString(0);
-                    locale = reader.GetString(1);
-                    role = reader.GetString(2);
+                    displayName = reader.GetString(1);
+                    locale = reader.GetString(2);
+                    role = reader.GetString(3);
                 }
             }
 
@@ -490,7 +491,7 @@ if (!active)
 
             return Result<LoginResult>.Success(new LoginResult(
 
-                User: new UserSnapshot(userId, tenantId, email, role!, locale!),
+                User: new UserSnapshot(userId, tenantId, email, role!, locale!, displayName),
                 AccessToken: MintAccessToken(userId, tenantId, role!),
                 RefreshToken: presented
             ));

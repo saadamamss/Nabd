@@ -111,4 +111,29 @@ public sealed class UserWallTests(PostgresFixture pg) : IClassFixture<PostgresFi
         Assert.False(delete.IsSuccess);
         Assert.Equal(IdentityErrors.SelfDelete, delete.Error);
     }
+
+    // P5 spec 02 (A9): the name was already selected and discarded. The list, the
+    // create answer and registration all carry it now — a defaulted field must be
+    // FILLED, or a topbar would show an email forever (MEMORY lesson 57).
+    [Fact]
+    public async Task every_user_snapshot_door_carries_the_display_name()
+    {
+        var a = await RegisterAsync("h");
+        Assert.Equal("h Admin", a.AdminUser.DisplayName);
+
+        var admin = new CallerContext(a.AdminUser.UserId, a.Tenant.TenantId, ["tenant_admin"]);
+        var users = new UserManagement(pg.Db);
+
+        var created = await users.CreateUserAsync(admin, new NewUserRequest(
+            TargetTenantId: a.Tenant.TenantId,
+            Email: $"{Uid()}@a.test", DisplayName: "Named Person", Locale: "ar",
+            Password: "CorrectHorse1", RoleCode: "viewer"));
+        Assert.True(created.IsSuccess, $"create failed: {created.Error}");
+        Assert.Equal("Named Person", created.Value.DisplayName);
+
+        var list = await users.ListUsersAsync(admin, a.Tenant.TenantId);
+        Assert.True(list.IsSuccess, $"list failed: {list.Error}");
+        Assert.Contains(list.Value, u => u.UserId == created.Value.UserId && u.DisplayName == "Named Person");
+        Assert.Contains(list.Value, u => u.UserId == a.AdminUser.UserId && u.DisplayName == "h Admin");
+    }
 }

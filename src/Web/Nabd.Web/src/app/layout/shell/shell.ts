@@ -55,6 +55,11 @@ export class Shell implements OnInit {
       icons: ['M4 4h6.5v6.5H4Z', 'M13.5 4H20v6.5h-6.5Z', 'M4 13.5h6.5V20H4Z', 'M13.5 13.5H20V20h-6.5Z'],
     },
     {
+      path: '/users',
+      key: 'nav.users',
+      icons: ['M16 19v-1.5a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4V19', 'M9.5 9.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z', 'M21 19v-1.5a4 4 0 0 0-3-3.87', 'M16 2.63a4 4 0 0 1 0 7.75'],
+    },
+    {
       path: '/assets',
       key: 'nav.assets',
       icons: ['M12 3 3 8l9 5 9-5-9-5Z', 'M3 12.5 12 17.5l9-5', 'M3 16.5 12 21.5l9-5'],
@@ -85,12 +90,18 @@ export class Shell implements OnInit {
 
   readonly roleKey = computed(() => ROLE_KEYS[this.auth.user()?.role ?? ''] ?? 'roles.member');
 
-  /** Two-letter avatar from the local part of the email; never a blank circle. */
+  /** The server's name, else the email — never a blank identity line. */
+  readonly displayName = computed(() => this.auth.user()?.displayName?.trim() || this.auth.user()?.email || '');
+
+  /** Two-letter avatar from the name (or the email's local part); never blank. */
   readonly initials = computed(() => {
-    const email = this.auth.user()?.email ?? '';
-    const local = (email.split('@')[0] ?? '').replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
-    const parts = local.split(/\s+/).filter(Boolean);
-    const text = parts.length > 1 ? `${parts[0][0]}${parts[1][0]}` : local.slice(0, 2);
+    const source = this.displayName();
+    const local = source.includes('@')
+      ? (source.split('@')[0] ?? '')
+      : source;
+    const cleaned = local.replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+    const parts = cleaned.split(/\s+/).filter(Boolean);
+    const text = parts.length > 1 ? `${parts[0][0]}${parts[1][0]}` : cleaned.slice(0, 2);
     return text.toUpperCase() || 'N';
   });
 

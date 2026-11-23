@@ -11,6 +11,8 @@ export interface UserSnapshot {
   email: string;
   role: string;
   locale: string;
+  /** Added in P5/02; older rows or a null name fall back to the email. */
+  displayName?: string | null;
 }
 
 /**
