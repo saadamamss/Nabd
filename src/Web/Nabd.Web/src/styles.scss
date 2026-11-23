@@ -1,0 +1,175 @@
+// Global styles. Logical properties only (spec 01, "direction discipline"):
+// the same stylesheet serves LTR and RTL; `dir` lives on <html>.
+@use '@angular/material' as mat;
+
+// Type: IBM Plex Sans (Latin, variable 100–700) paired with IBM Plex Sans
+// Arabic, so both scripts share one skeleton. Self-hosted from `public/fonts`
+// (SIL OFL, LICENSE.txt alongside), subset per script: an English page never
+// downloads the Arabic faces, and vice versa.
+@font-face {
+  font-family: 'IBM Plex Sans';
+  font-style: normal;
+  font-weight: 100 700;
+  font-display: swap;
+  src: url('/fonts/ibm-plex-sans-latin.woff2') format('woff2');
+  unicode-range:
+    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC,
+    U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193,
+    U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: 'IBM Plex Sans Arabic';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/ibm-plex-sans-arabic-400.woff2') format('woff2');
+  unicode-range:
+    U+0600-06FF, U+0750-077F, U+0870-088E, U+0890-0891, U+0897-08E1,
+    U+08E3-08FF, U+200C-200E, U+2010-2011, U+204F, U+2E41, U+FB50-FDFF,
+    U+FE70-FE74, U+FE76-FEFC;
+}
+
+@font-face {
+  font-family: 'IBM Plex Sans Arabic';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url('/fonts/ibm-plex-sans-arabic-600.woff2') format('woff2');
+  unicode-range:
+    U+0600-06FF, U+0750-077F, U+0870-088E, U+0890-0891, U+0897-08E1,
+    U+08E3-08FF, U+200C-200E, U+2010-2011, U+204F, U+2E41, U+FB50-FDFF,
+    U+FE70-FE74, U+FE76-FEFC;
+}
+
+@font-face {
+  font-family: 'IBM Plex Sans Arabic';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('/fonts/ibm-plex-sans-arabic-700.woff2') format('woff2');
+  unicode-range:
+    U+0600-06FF, U+0750-077F, U+0870-088E, U+0890-0891, U+0897-08E1,
+    U+08E3-08FF, U+200C-200E, U+2010-2011, U+204F, U+2E41, U+FB50-FDFF,
+    U+FE70-FE74, U+FE76-FEFC;
+}
+
+html {
+  height: 100%;
+
+  // Opts the document into the OS scheme; `light-dark()` below and Material's
+  // theme tokens both follow it, including native controls and scrollbars.
+  color-scheme: light dark;
+
+  @include mat.theme(
+    (
+      color: (
+        primary: mat.$azure-palette,
+        tertiary: mat.$blue-palette,
+      ),
+      density: 0,
+    )
+  );
+}
+
+// The design layer: one place for surfaces, text, brand, depth and motion.
+// Components read these tokens instead of hard-coding colours, so the whole
+// app restyles (and dark-mode mirrors) from this block alone.
+:root {
+  --app-font: 'IBM Plex Sans', system-ui, 'Segoe UI', tahoma, sans-serif;
+  --app-canvas: light-dark(#f4f6fb, #090e18);
+  --app-surface: light-dark(#fff, #121a2a);
+  --app-surface-muted: light-dark(#eef2f9, #1a2436);
+  --app-border: light-dark(#e3e8f1, #232f45);
+  --app-border-strong: light-dark(#cbd6e5, #33425e);
+  --app-text: light-dark(#0e1729, #e9eefb);
+  --app-text-muted: light-dark(#5a6b86, #93a3bf);
+  --app-brand: light-dark(#1d4ed8, #7ba5ff);
+  --app-brand-strong: light-dark(#1e40af, #a9c4ff);
+  --app-brand-soft: light-dark(#e8efff, #16233d);
+  --app-brand-contrast: light-dark(#fff, #08101f);
+  --app-healthy: light-dark(#0f9d6b, #34d399);
+  --app-warning: light-dark(#b45309, #fbbf24);
+  --app-alert: light-dark(#dc2626, #f87171);
+  --app-offline: light-dark(#64748b, #94a3b8);
+  --app-ring: 0 0 0 3px light-dark(rgb(29 78 216 / 22%), rgb(123 165 255 / 30%));
+  --app-radius-sm: 0.625rem;
+  --app-radius-md: 0.875rem;
+  --app-radius-lg: 1.25rem;
+  --app-radius-xl: 1.75rem;
+  --app-shadow-sm: 0 1px 2px rgb(15 23 42 / 6%);
+  --app-shadow-md: 0 12px 32px -16px rgb(15 23 42 / 28%);
+  --app-shadow-lg: 0 30px 70px -30px rgb(9 23 51 / 45%);
+  --app-duration: 160ms;
+  --app-easing: cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+body {
+  margin: 0;
+  min-block-size: 100vh;
+  font-family: var(--app-font);
+  font-size: 1rem;
+  line-height: 1.5;
+  background: var(--app-canvas);
+  color: var(--app-text);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  margin: 0;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+p {
+  margin: 0;
+}
+
+a {
+  color: inherit;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+// Arabic picks the Arabic face first; Latin runs inside an Arabic page fall
+// through to Plex Sans, so asset names and readings stay in one voice.
+:root[lang='ar'] {
+  --app-font: 'IBM Plex Sans Arabic', 'IBM Plex Sans', system-ui, 'Segoe UI', tahoma, sans-serif;
+}
+
+:where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
+  outline: 2px solid var(--app-brand);
+  outline-offset: 2px;
+}
+
+::selection {
+  background: var(--app-brand);
+  color: var(--app-brand-contrast);
+}
+
+// Directional glyphs (arrows, chevrons) opt in to mirroring by class, so a
+// single logical stylesheet still points the right way in RTL.
+:root[dir='rtl'] .mirror-rtl {
+  transform: scaleX(-1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

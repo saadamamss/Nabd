@@ -1,0 +1,86 @@
+{
+  "app": {
+    "name": "Nabd",
+    "tagline": "Operations console"
+  },
+  "common": {
+    "loading": "Loading…",
+    "retry": "Try again",
+    "dismiss": "Dismiss",
+    "comingSoon": "This page is built in a later step.",
+    "language": "Language",
+    "workspace": "Workspace",
+    "preview": "Design preview"
+  },
+  "locale": {
+    "switchTo": "العربية",
+    "persistFailed": "The language changed on this device, but we could not save it to your account."
+  },
+  "auth": {
+    "title": "Sign in",
+    "subtitle": "Sign in to your workspace.",
+    "heroBadge": "Built for cold chains",
+    "heroTitle": "Know before it fails.",
+    "heroBody": "Nabd watches your cold-chain assets and raises the alert the moment a reading crosses its limit.",
+    "feature1": "Live readings from every asset",
+    "feature2": "Alerts the moment a limit is crossed",
+    "feature3": "Arabic and English, fully mirrored",
+    "sessionNote": "Your session stays in this browser tab.",
+    "email": "Email",
+    "password": "Password",
+    "signIn": "Sign in",
+    "signingIn": "Signing in…",
+    "emailRequired": "Enter your email address.",
+    "passwordRequired": "Enter your password.",
+    "invalid": "Email or password is incorrect.",
+    "tenantDisabled": "This workspace is disabled. Ask the platform administrator to enable it.",
+    "sessionExpired": "Your session ended. Sign in again.",
+    "signOut": "Sign out",
+    "signedOut": "You are signed out.",
+    "backoff": "Too many attempts. Wait a moment, then try again."
+  },
+  "roles": {
+    "viewer": "Viewer",
+    "tenantAdmin": "Workspace admin",
+    "platformAdmin": "Platform admin",
+    "member": "Member"
+  },
+  "nav": {
+    "label": "Main navigation",
+    "menu": "Open menu",
+    "closeMenu": "Close menu",
+    "collapse": "Collapse sidebar",
+    "expand": "Expand sidebar",
+    "overview": "Overview",
+    "assets": "Assets",
+    "alerts": "Alerts",
+    "settings": "Settings",
+    "platform": "Platform"
+  },
+  "pages": {
+    "overview": {
+      "title": "Overview",
+      "body": "Live status and the newest alerts arrive in a later step."
+    },
+    "assets": {
+      "title": "Assets",
+      "body": "The asset list arrives in a later step."
+    },
+    "alerts": {
+      "title": "Alerts",
+      "body": "The alert feed arrives in a later step."
+    },
+    "settings": {
+      "title": "Settings",
+      "body": "Account and notification settings arrive in later steps."
+    },
+    "platform": {
+      "title": "Platform",
+      "body": "The platform console arrives in a later step."
+    }
+  },
+  "errors": {
+    "network": "We could not reach the server.",
+    "unexpected": "Something went wrong."
+  }
+}
