@@ -23,7 +23,7 @@ function errorCode(error: HttpErrorResponse): string | null {
 })
 export class LoginPage {
   private readonly auth = inject(AuthService);
-  private readonly locale = inject(LocaleService);
+  readonly locale = inject(LocaleService);
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
 
@@ -47,8 +47,9 @@ export class LoginPage {
     const { email, password } = this.form.getRawValue();
     this.auth.login(email, password).subscribe({
       next: (response) => {
-        // Boot in the user's stored language before the shell renders (test 5).
-        this.locale.init(response.user.locale);
+        // A language chosen on this page follows the user in; otherwise the
+        // account's stored locale boots the shell before any page data loads.
+        this.locale.adoptLoginLocale(response.user.locale);
         void this.router.navigateByUrl(this.returnUrl());
       },
       error: (error: unknown) => {

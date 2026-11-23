@@ -15,7 +15,6 @@ const SESSION = {
     locale: 'en',
   },
   accessToken: 'access-1',
-  refreshToken: 'refresh-1',
 };
 
 describe('LocaleService', () => {
@@ -35,6 +34,7 @@ describe('LocaleService', () => {
     http = TestBed.inject(HttpTestingController);
 
     sessionStorage.clear();
+    localStorage.clear();
     document.documentElement.removeAttribute('dir');
     document.documentElement.removeAttribute('lang');
   });
@@ -49,6 +49,37 @@ describe('LocaleService', () => {
     locale.use('en');
     expect(document.documentElement.getAttribute('lang')).toBe('en');
     expect(document.documentElement.getAttribute('dir')).toBe('ltr');
+  });
+
+  it('an anonymous reload keeps the last chosen language; the session snapshot still wins', () => {
+    locale.use('ar');
+
+    // No user after a reload: init gets nothing and must not snap back to English.
+    locale.init(undefined);
+    expect(locale.locale()).toBe('ar');
+    expect(document.documentElement.getAttribute('dir')).toBe('rtl');
+
+    // The server snapshot always outranks the browser's last choice.
+    locale.init('en');
+    expect(locale.locale()).toBe('en');
+    expect(document.documentElement.getAttribute('dir')).toBe('ltr');
+  });
+
+  it('a language picked on the login page follows the user in and is saved to the account', () => {
+    locale.toggle(); // signed out: applies immediately, nothing to PATCH yet
+    expect(locale.locale()).toBe('ar');
+    http.expectNone('/api/v1/tenants/t1/users/u1/locale');
+
+    auth.apply(SESSION);
+    locale.adoptLoginLocale('en'); // the account says en; this tab just chose ar
+
+    const request = http.expectOne('/api/v1/tenants/t1/users/u1/locale');
+    expect(request.request.method).toBe('PATCH');
+    expect(request.request.body).toEqual({ locale: 'ar' });
+    expect(locale.locale()).toBe('ar');
+    expect(document.documentElement.getAttribute('dir')).toBe('rtl');
+
+    request.flush({ userId: 'u1', tenantId: 't1', email: 'x', role: 'admin', locale: 'ar' });
   });
 
   it('toggles and PATCHes the exact locale door with {locale}', () => {

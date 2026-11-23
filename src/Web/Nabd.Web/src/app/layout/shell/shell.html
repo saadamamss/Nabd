@@ -1,27 +1,171 @@
-<div class="app-frame">
-  <header class="topbar">
-    <span class="brand">{{ 'app.name' | transloco }}</span>
-    @if (tenantName(); as name) {
-      <span class="tenant">{{ name }}</span>
-    }
-    <span class="spacer"></span>
-    <button type="button" class="locale-toggle" (click)="locale.toggle()">
-      {{ 'locale.switchTo' | transloco }}
-    </button>
-    <button type="button" class="signout" (click)="signOut()">
-      {{ 'auth.signOut' | transloco }}
-    </button>
-  </header>
-
-  <nav class="sidenav" [attr.aria-label]="'nav.label' | transloco">
-    @for (item of visibleNav(); track item.path) {
-      <a class="nav-link" [routerLink]="item.path" routerLinkActive="is-active">
-        {{ item.key | transloco }}
+<div class="app-frame" [class.menu-open]="menuOpen()" [class.is-collapsed]="collapsed()">
+  <aside class="sidebar" id="app-nav">
+    <div class="sidebar-head">
+      <a
+        class="brand"
+        routerLink="/overview"
+        [attr.aria-label]="'app.name' | transloco"
+        [attr.title]="collapsed() ? ('app.name' | transloco) : null"
+        (click)="closeMenu()"
+      >
+        <span class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 12h4l2.5-6 4 12 2.5-6H21" />
+          </svg>
+        </span>
+        <span class="brand-text">
+          <span class="brand-name">{{ 'app.name' | transloco }}</span>
+          <span class="brand-tagline">{{ 'app.tagline' | transloco }}</span>
+        </span>
       </a>
-    }
-  </nav>
 
-  <main class="content">
-    <router-outlet />
-  </main>
+      <button
+        type="button"
+        class="icon-button rail-toggle"
+        aria-controls="app-nav"
+        [attr.aria-expanded]="!collapsed()"
+        [attr.aria-label]="(collapsed() ? 'nav.expand' : 'nav.collapse') | transloco"
+        [attr.title]="(collapsed() ? 'nav.expand' : 'nav.collapse') | transloco"
+        (click)="toggleSidebar()"
+      >
+        <svg
+          class="mirror-rtl"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.8"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          aria-hidden="true"
+        >
+          @if (collapsed()) {
+            <path d="M9.5 6l6 6-6 6" />
+          } @else {
+            <rect x="3.5" y="4.5" width="17" height="15" rx="3" />
+            <path d="M9.5 4.5v15" />
+          }
+        </svg>
+      </button>
+    </div>
+
+    <nav class="sidenav" [attr.aria-label]="'nav.label' | transloco">
+      @for (item of visibleNav(); track item.path) {
+        <a
+          class="nav-link"
+          [routerLink]="item.path"
+          routerLinkActive="is-active"
+          [attr.aria-label]="item.key | transloco"
+          [attr.title]="collapsed() ? (item.key | transloco) : null"
+          (click)="closeMenu()"
+        >
+          <svg
+            class="nav-icon"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.6"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            @for (d of item.icons; track d) {
+              <path [attr.d]="d" />
+            }
+          </svg>
+          <span class="nav-text">{{ item.key | transloco }}</span>
+        </a>
+      }
+    </nav>
+
+    <div class="sidebar-footer">
+      @if (auth.user(); as user) {
+        <div class="user">
+          <span class="avatar" aria-hidden="true">{{ initials() }}</span>
+          <span class="user-meta">
+            <span class="user-email" [attr.title]="user.email">{{ user.email }}</span>
+            <span class="user-role">{{ roleKey() | transloco }}</span>
+          </span>
+        </div>
+      }
+      <button
+        type="button"
+        class="icon-button"
+        [attr.aria-label]="'auth.signOut' | transloco"
+        [attr.title]="'auth.signOut' | transloco"
+        (click)="signOut()"
+      >
+        <svg
+          class="mirror-rtl"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.7"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          aria-hidden="true"
+        >
+          <path d="M14.5 4H19a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1h-4.5" />
+          <path d="M9.5 8 5.5 12l4 4" />
+          <path d="M5.5 12H16" />
+        </svg>
+      </button>
+    </div>
+  </aside>
+
+  <button
+    type="button"
+    class="scrim"
+    tabindex="-1"
+    [attr.aria-label]="'nav.closeMenu' | transloco"
+    (click)="closeMenu()"
+  ></button>
+
+  <div class="main">
+    <header class="topbar">
+      <div class="topbar-inner">
+        <button
+          type="button"
+          class="icon-button menu-toggle"
+          aria-controls="app-nav"
+          [attr.aria-expanded]="menuOpen()"
+          [attr.aria-label]="'nav.menu' | transloco"
+          (click)="toggleMenu()"
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true">
+            <path d="M4 7h16M4 12h16M4 17h16" />
+          </svg>
+        </button>
+
+        <span class="tenant">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M4 21V5.5A1.5 1.5 0 0 1 5.5 4h8A1.5 1.5 0 0 1 15 5.5V21" />
+            <path d="M15 9.5h3.5A1.5 1.5 0 0 1 20 11v10" />
+            <path d="M7.5 8h3M7.5 12h3M7.5 16h3M3 21h18" />
+            <path d="M17.5 14h.01M17.5 18h.01" />
+          </svg>
+          {{ tenantName() ?? ('app.name' | transloco) }}
+        </span>
+
+        <span class="spacer"></span>
+
+        <button
+          type="button"
+          class="locale-toggle"
+          [attr.aria-label]="'common.language' | transloco"
+          (click)="locale.toggle()"
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true">
+            <path d="M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18Z" />
+            <path d="M3 12h18" />
+            <path d="M12 3c2.8 3.2 2.8 14.8 0 18" />
+          </svg>
+          {{ 'locale.switchTo' | transloco }}
+        </button>
+      </div>
+    </header>
+
+    <main class="content">
+      <router-outlet />
+    </main>
+  </div>
 </div>

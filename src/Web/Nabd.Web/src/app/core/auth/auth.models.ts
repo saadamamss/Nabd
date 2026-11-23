@@ -13,11 +13,14 @@ export interface UserSnapshot {
   locale: string;
 }
 
-/** Mirrors `LoginResult` — refresh tokens rotate on every use. */
+/**
+ * Mirrors the API's `SessionResponse`: user + access token only. The rotating
+ * refresh token is an HttpOnly cookie the browser attaches to `/auth/refresh`
+ * and `/auth/logout`; it is deliberately unreadable from script.
+ */
 export interface LoginResponse {
   user: UserSnapshot;
   accessToken: string;
-  refreshToken: string;
 }
 
 /** Mirrors `TenantSnapshot`. */

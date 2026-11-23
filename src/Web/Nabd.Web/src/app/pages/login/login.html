@@ -1,43 +1,104 @@
 <section class="login">
-  <div class="card">
-    <h1>{{ 'auth.title' | transloco }}</h1>
-    <p class="subtitle">{{ 'auth.subtitle' | transloco }}</p>
+  <aside class="hero">
+    <div class="hero-top">
+      <span class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 12h4l2.5-6 4 12 2.5-6H21" />
+        </svg>
+      </span>
+      <span class="brand-name">{{ 'app.name' | transloco }}</span>
+    </div>
 
-    <form [formGroup]="form" (ngSubmit)="submit()" novalidate>
-      <label class="field">
-        <span>{{ 'auth.email' | transloco }}</span>
-        <input
-          type="email"
-          formControlName="email"
-          autocomplete="username"
-          [attr.aria-invalid]="form.controls.email.invalid && form.controls.email.touched"
-          dir="ltr"
-        />
-        @if (form.controls.email.invalid && form.controls.email.touched) {
-          <span class="field-error">{{ 'auth.emailRequired' | transloco }}</span>
+    <div class="hero-body">
+      <span class="badge">{{ 'auth.heroBadge' | transloco }}</span>
+      <h2>{{ 'auth.heroTitle' | transloco }}</h2>
+      <p class="hero-copy">{{ 'auth.heroBody' | transloco }}</p>
+
+      <ul class="features">
+        @for (feature of ['auth.feature1', 'auth.feature2', 'auth.feature3']; track feature) {
+          <li>
+            <span class="feature-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="m5 12.5 4.5 4.5L19 7.5" />
+              </svg>
+            </span>
+            {{ feature | transloco }}
+          </li>
         }
-      </label>
+      </ul>
+    </div>
 
-      <label class="field">
-        <span>{{ 'auth.password' | transloco }}</span>
-        <input
-          type="password"
-          formControlName="password"
-          autocomplete="current-password"
-          [attr.aria-invalid]="form.controls.password.invalid && form.controls.password.touched"
-        />
-        @if (form.controls.password.invalid && form.controls.password.touched) {
-          <span class="field-error">{{ 'auth.passwordRequired' | transloco }}</span>
-        }
-      </label>
+    <span class="hero-foot">{{ 'app.tagline' | transloco }}</span>
+  </aside>
 
-      @if (errorKey(); as key) {
-        <p class="form-error" role="alert">{{ key | transloco }}</p>
-      }
+  <div class="panel">
+    <div class="panel-top">
+      <span class="mobile-brand">
+        <span class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 12h4l2.5-6 4 12 2.5-6H21" />
+          </svg>
+        </span>
+        <span>{{ 'app.name' | transloco }}</span>
+      </span>
 
-      <button type="submit" class="submit" [disabled]="submitting()">
-        {{ (submitting() ? 'auth.signingIn' : 'auth.signIn') | transloco }}
+      <button
+        type="button"
+        class="locale-toggle"
+        [attr.aria-label]="'common.language' | transloco"
+        (click)="locale.toggle()"
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true">
+          <path d="M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18Z" />
+          <path d="M3 12h18" />
+          <path d="M12 3c2.8 3.2 2.8 14.8 0 18" />
+        </svg>
+        {{ 'locale.switchTo' | transloco }}
       </button>
-    </form>
+    </div>
+
+    <div class="card">
+      <h1>{{ 'auth.title' | transloco }}</h1>
+      <p class="subtitle">{{ 'auth.subtitle' | transloco }}</p>
+
+      <form [formGroup]="form" (ngSubmit)="submit()" novalidate>
+        <label class="field">
+          <span>{{ 'auth.email' | transloco }}</span>
+          <input
+            type="email"
+            formControlName="email"
+            autocomplete="username"
+            [attr.aria-invalid]="form.controls.email.invalid && form.controls.email.touched"
+            dir="ltr"
+          />
+          @if (form.controls.email.invalid && form.controls.email.touched) {
+            <span class="field-error">{{ 'auth.emailRequired' | transloco }}</span>
+          }
+        </label>
+
+        <label class="field">
+          <span>{{ 'auth.password' | transloco }}</span>
+          <input
+            type="password"
+            formControlName="password"
+            autocomplete="current-password"
+            [attr.aria-invalid]="form.controls.password.invalid && form.controls.password.touched"
+          />
+          @if (form.controls.password.invalid && form.controls.password.touched) {
+            <span class="field-error">{{ 'auth.passwordRequired' | transloco }}</span>
+          }
+        </label>
+
+        @if (errorKey(); as key) {
+          <p class="form-error" role="alert">{{ key | transloco }}</p>
+        }
+
+        <button type="submit" class="submit" [disabled]="submitting()">
+          {{ (submitting() ? 'auth.signingIn' : 'auth.signIn') | transloco }}
+        </button>
+      </form>
+
+      <p class="footnote">{{ 'auth.sessionNote' | transloco }}</p>
+    </div>
   </div>
 </section>

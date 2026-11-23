@@ -20,7 +20,6 @@ const AR_SESSION = {
     locale: 'ar',
   },
   accessToken: 'access-1',
-  refreshToken: 'refresh-1',
 };
 
 function configure(returnUrl: string | null = null): void {

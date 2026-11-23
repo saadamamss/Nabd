@@ -4,11 +4,29 @@ import { catchError, finalize, map, Observable, of, shareReplay, tap, throwError
 import { API_BASE } from '../api/api.config';
 import { AppLocale, LoginResponse, UserSnapshot } from './auth.models';
 
-const REFRESH_STORAGE_KEY = 'nabd.refresh';
+/** Every auth door is called with credentials so the cookie rides along. */
+const CREDENTIALS = { withCredentials: true } as const;
 
 /**
- * Owns the session (spec 01, S7): the access token lives in memory only, the
- * refresh token in `sessionStorage` and is **replaced on every rotation**.
+ * A failed `/logout` cannot delete an HttpOnly cookie from script. This local
+ * flag (a boolean, never a token) keeps the next reload from resurrecting the
+ * session, and makes boot finish the kill instead.
+ */
+const SIGNED_OUT_KEY = 'nabd.signed-out';
+
+function signedOut(): boolean {
+  try {
+    return sessionStorage.getItem(SIGNED_OUT_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Owns the session (spec 01, S7): the access token lives in memory only. The
+ * rotating refresh token never enters JavaScript — the API sets it as an
+ * HttpOnly cookie, so a reload can only restore the session by asking
+ * `/auth/refresh` and letting the browser present it.
  */
 @Injectable({ providedIn: 'root' })
 export class AuthService {
@@ -24,18 +42,17 @@ export class AuthService {
 
   login(email: string, password: string): Observable<LoginResponse> {
     return this.http
-      .post<LoginResponse>(`${this.base}/api/v1/auth/login`, { email, password })
+      .post<LoginResponse>(
+        `${this.base}/api/v1/auth/login`,
+        { email, password },
+        CREDENTIALS,
+      )
       .pipe(tap((response) => this.apply(response)));
   }
 
-  /** Stores a successful login/refresh pair (the refresh token always rotates). */
+  /** Stores a successful login/refresh pair; the cookie rotates server-side. */
   apply(response: LoginResponse): void {
     this.session.set(response);
-    sessionStorage.setItem(REFRESH_STORAGE_KEY, response.refreshToken);
-  }
-
-  refreshToken(): string | null {
-    return sessionStorage.getItem(REFRESH_STORAGE_KEY);
   }
 
   /** The server's locale is the truth; keep the local snapshot in step. */
@@ -52,11 +69,8 @@ export class AuthService {
   refresh(): Observable<void> {
     if (this.refreshInFlight$) return this.refreshInFlight$;
 
-    const token = this.refreshToken();
-    if (!token) return throwError(() => new Error('no-refresh-token'));
-
     this.refreshInFlight$ = this.http
-      .post<LoginResponse>(`${this.base}/api/v1/auth/refresh`, { refreshToken: token })
+      .post<LoginResponse>(`${this.base}/api/v1/auth/refresh`, null, CREDENTIALS)
       .pipe(
         tap((response) => this.apply(response)),
         map(() => undefined as void),
@@ -73,30 +87,51 @@ export class AuthService {
     return this.refreshInFlight$;
   }
 
-  /** App initializer: a reload with a live refresh token restores the session silently. */
+  /**
+   * App initializer: the cookie is unreadable, so the only honest way to know
+   * whether a session survived the reload is to ask. A 401 means signed out.
+   */
   async restore(): Promise<void> {
-    if (!this.refreshToken()) return;
+    // The user signed out but the server never confirmed: clear the cookie now
+    // and stay signed out, rather than restoring a session they ended.
+    if (signedOut()) {
+      await new Promise<void>((resolve) => {
+        this.logout().subscribe({ complete: () => resolve(), error: () => resolve() });
+      });
+      return;
+    }
+
     await new Promise<void>((resolve) => {
       this.refresh().subscribe({ next: () => resolve(), error: () => resolve() });
     });
   }
 
   /**
-   * Posts `{refreshToken}` (the door is anonymous, spec 01) but clears local
-   * state first: a failing or unreachable `/logout` must never trap the user.
+   * Clears local state first and tells the server to revoke the cookie's
+   * session; a failing or unreachable `/logout` must never trap the user.
    */
   logout(): Observable<void> {
-    const refreshToken = this.refreshToken();
     this.clearLocal();
-    if (!refreshToken) return of(void 0);
+    this.setSignedOut(true);
 
     return this.http
-      .post<void>(`${this.base}/api/v1/auth/logout`, { refreshToken })
-      .pipe(catchError(() => of(void 0)));
+      .post<void>(`${this.base}/api/v1/auth/logout`, null, CREDENTIALS)
+      .pipe(
+        tap(() => this.setSignedOut(false)),
+        catchError(() => of(void 0)),
+      );
+  }
+
+  private setSignedOut(value: boolean): void {
+    try {
+      if (value) sessionStorage.setItem(SIGNED_OUT_KEY, '1');
+      else sessionStorage.removeItem(SIGNED_OUT_KEY);
+    } catch {
+      // Blocked storage: logout still clears everything this tab can clear.
+    }
   }
 
   clearLocal(): void {
     this.session.set(null);
-    sessionStorage.removeItem(REFRESH_STORAGE_KEY);
   }
 }

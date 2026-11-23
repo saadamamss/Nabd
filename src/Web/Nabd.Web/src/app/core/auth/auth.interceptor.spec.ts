@@ -16,7 +16,6 @@ const SESSION = {
     locale: 'en',
   },
   accessToken: 'access-1',
-  refreshToken: 'refresh-1',
 };
 
 describe('authInterceptor', () => {
@@ -48,7 +47,7 @@ describe('authInterceptor', () => {
 
   afterEach(() => http.verify());
 
-  it('attaches the bearer, refreshes once on 401, stores the rotated token, retries once', () => {
+  it('attaches the bearer, refreshes once on 401, retries once with the new token', () => {
     auth.apply(SESSION);
     let received: unknown = null;
 
@@ -59,8 +58,9 @@ describe('authInterceptor', () => {
     first.flush({ code: 'expired' }, { status: 401, statusText: 'Unauthorized' });
 
     const refresh = http.expectOne('/api/v1/auth/refresh');
-    expect(refresh.request.body).toEqual({ refreshToken: 'refresh-1' });
-    refresh.flush({ ...SESSION, accessToken: 'access-2', refreshToken: 'refresh-2' });
+    expect(refresh.request.body).toBeNull(); // the cookie identifies the session
+    expect(refresh.request.withCredentials).toBe(true);
+    refresh.flush({ ...SESSION, accessToken: 'access-2' });
 
     const retry = http.expectOne('/api/v1/assets');
     expect(retry.request.headers.get('Authorization')).toBe('Bearer access-2');
@@ -68,7 +68,7 @@ describe('authInterceptor', () => {
 
     expect(received).toEqual({ ok: true });
     expect(auth.accessToken()).toBe('access-2');
-    expect(sessionStorage.getItem('nabd.refresh')).toBe('refresh-2');
+    expect(sessionStorage.length).toBe(0); // no token was ever written here
   });
 
   it('a second 401 is terminal: session cleared, routed to login with returnUrl', () => {
@@ -76,13 +76,10 @@ describe('authInterceptor', () => {
     client.get('/api/v1/assets').subscribe({ error: () => undefined });
 
     http.expectOne('/api/v1/assets').flush({}, { status: 401, statusText: 'Unauthorized' });
-    http
-      .expectOne('/api/v1/auth/refresh')
-      .flush({ ...SESSION, accessToken: 'access-2', refreshToken: 'refresh-2' });
+    http.expectOne('/api/v1/auth/refresh').flush({ ...SESSION, accessToken: 'access-2' });
     http.expectOne('/api/v1/assets').flush({}, { status: 401, statusText: 'Unauthorized' });
 
     expect(auth.user()).toBeNull();
-    expect(sessionStorage.getItem('nabd.refresh')).toBeNull();
     expect(router.navigate).toHaveBeenCalledWith(['/login'], {
       queryParams: { returnUrl: '/' },
     });

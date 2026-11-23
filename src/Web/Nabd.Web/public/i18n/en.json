@@ -1,13 +1,16 @@
 {
   "app": {
-    "name": "Nabd"
+    "name": "Nabd",
+    "tagline": "Operations console"
   },
   "common": {
     "loading": "Loading…",
     "retry": "Try again",
     "dismiss": "Dismiss",
     "comingSoon": "This page is built in a later step.",
-    "language": "Language"
+    "language": "Language",
+    "workspace": "Workspace",
+    "preview": "Design preview"
   },
   "locale": {
     "switchTo": "العربية",
@@ -16,6 +19,13 @@
   "auth": {
     "title": "Sign in",
     "subtitle": "Sign in to your workspace.",
+    "heroBadge": "Built for cold chains",
+    "heroTitle": "Know before it fails.",
+    "heroBody": "Nabd watches your cold-chain assets and raises the alert the moment a reading crosses its limit.",
+    "feature1": "Live readings from every asset",
+    "feature2": "Alerts the moment a limit is crossed",
+    "feature3": "Arabic and English, fully mirrored",
+    "sessionNote": "Your session stays in this browser tab.",
     "email": "Email",
     "password": "Password",
     "signIn": "Sign in",
@@ -29,8 +39,18 @@
     "signedOut": "You are signed out.",
     "backoff": "Too many attempts. Wait a moment, then try again."
   },
+  "roles": {
+    "viewer": "Viewer",
+    "tenantAdmin": "Workspace admin",
+    "platformAdmin": "Platform admin",
+    "member": "Member"
+  },
   "nav": {
     "label": "Main navigation",
+    "menu": "Open menu",
+    "closeMenu": "Close menu",
+    "collapse": "Collapse sidebar",
+    "expand": "Expand sidebar",
     "overview": "Overview",
     "assets": "Assets",
     "alerts": "Alerts",

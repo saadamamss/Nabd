@@ -16,7 +16,6 @@ function session(role: string) {
       locale: 'en',
     },
     accessToken: 'access-1',
-    refreshToken: 'refresh-1',
   };
 }
 
