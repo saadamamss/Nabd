@@ -12,6 +12,7 @@ const CODE_KEYS: Readonly<Record<string, string>> = {
   'identity:tenant_not_found': 'errors.notFound',
   'assets:asset_not_found': 'errors.notFound',
   'assets:device_not_found': 'errors.notFound',
+  'assets:device_revoked': 'errors.deviceRevoked',
   'rules:rule_not_found': 'errors.notFound',
   'rules:device_not_found': 'errors.notFound',
   'identity:email_taken': 'errors.emailTaken',

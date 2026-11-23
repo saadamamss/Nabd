@@ -66,6 +66,8 @@ public sealed class DevicesController(IDeviceLifecycle devices) : ControllerBase
         IdentityErrors.Forbidden => StatusCode(403, new { code = error }),
         IdentityErrors.CrossTenantTarget or DeviceErrors.DeviceNotFound or DeviceErrors.AssetNotFound
             => NotFound(new { code = error }),
+        // revoke is terminal (P5 spec 02): the state refuses the request, the shape was fine
+        DeviceErrors.DeviceRevoked => StatusCode(422, new { code = error }),
         _ => BadRequest(new { code = error }),
     };
 }

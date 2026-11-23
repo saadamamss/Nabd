@@ -55,4 +55,7 @@ public static class DeviceErrors
     public const string DeviceNotFound = "assets:device_not_found";
     public const string AssetNotFound = "assets:asset_not_found";
     public const string InvalidName = "assets:invalid_name";
+    /// <summary>Revoke is terminal (P5 spec 02): a revoked device is not reissue-able —
+    /// a fresh hash would be a credential `0014` can never verify (is_active = false).</summary>
+    public const string DeviceRevoked = "assets:device_revoked";
 }

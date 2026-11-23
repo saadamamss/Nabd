@@ -33,7 +33,7 @@ const THRESHOLD = {
   tenantId: 't1',
   deviceId: 'd1',
   channelKey: 'temp',
-  ruleType: 'threshold',
+  ruleType: 'outside_range',
   thresholdLow: 2,
   thresholdHigh: 8,
   durationSeconds: 60,
@@ -109,7 +109,7 @@ describe('RulesPage', () => {
     const create = http.expectOne('/api/v1/devices/d1/rules');
     expect(create.request.body).toEqual({
       channelKey: 'temp',
-      ruleType: 'threshold',
+      ruleType: 'outside_range',
       thresholdLow: 2,
       thresholdHigh: 8,
       durationSeconds: 60,
@@ -122,6 +122,49 @@ describe('RulesPage', () => {
     http.expectOne('/api/v1/devices/d1/rules').flush([THRESHOLD, OFFLINE]);
     await fixture.whenStable();
     expect(page.thresholds().length).toBe(1);
+  });
+
+  it('offers only numeric channels that carry no range rule — a bool channel can never fire', async () => {
+    const template = {
+      ...TEMPLATE,
+      channels: [
+        ...TEMPLATE.channels,
+        { key: 'door', nameAr: 'الباب', nameEn: 'Door', unit: 'state', dataType: 'bool', lowerLimit: null, upperLimit: null },
+      ],
+    };
+    const { fixture, http, page } = setup();
+    fixture.detectChanges();
+    http.expectOne('/api/v1/templates').flush([template]);
+    http.expectOne('/api/v1/devices/d1/rules').flush([OFFLINE]);
+    await fixture.whenStable();
+
+    expect(page.openChannels().map((channel) => channel.key)).toEqual(['temp']);
+
+    page.toggleCreate();
+    fixture.detectChanges();
+    const options = [...(fixture.nativeElement as HTMLElement).querySelectorAll('select option')]
+      .map((option) => (option as HTMLOptionElement).value)
+      .filter((value) => value !== 'warn' && value !== 'critical');
+    expect(options).toEqual(['temp']);
+  });
+
+  it('says why nothing can be created when every numeric channel already has a range rule', async () => {
+    const { fixture, http, page } = setup();
+    fixture.detectChanges();
+    http.expectOne('/api/v1/templates').flush([TEMPLATE]);
+    http.expectOne('/api/v1/devices/d1/rules').flush([THRESHOLD, OFFLINE]);
+    await fixture.whenStable();
+
+    expect(page.openChannels()).toEqual([]);
+
+    page.toggleCreate();
+    fixture.detectChanges();
+    const host = fixture.nativeElement as HTMLElement;
+    expect(host.textContent).toContain('Every numeric channel already has a range rule');
+    const submit = [...host.querySelectorAll('button')].find((button) =>
+      button.textContent?.includes('Create rule'),
+    );
+    expect(submit?.disabled).toBe(true);
   });
 
   it('round-trips quiet hours in UTC from the edit view only', async () => {
