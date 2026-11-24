@@ -1,10 +1,12 @@
-import { Component, computed, inject, OnInit, signal } from '@angular/core';
+import { NgTemplateOutlet } from '@angular/common';
+import { Component, computed, ElementRef, inject, OnInit, signal, viewChild } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { TranslocoPipe } from '@jsverse/transloco';
 import { ApiProblem, describeApiError } from '../../core/api/api-error';
 import { DeviceMint, DeviceRow, TenantAdminApi } from '../../core/api/tenant-admin.service';
 import { AuthService } from '../../core/auth/auth.service';
+import { NoticeService } from '../../core/ui/notice.service';
 
 /**
  * Devices (spec 02, A1): the token is shown once, in memory, and never
@@ -16,7 +18,7 @@ import { AuthService } from '../../core/auth/auth.service';
  */
 @Component({
   selector: 'app-devices-page',
-  imports: [ReactiveFormsModule, RouterLink, TranslocoPipe],
+  imports: [NgTemplateOutlet, ReactiveFormsModule, RouterLink, TranslocoPipe],
   template: `
     <section class="ui-page">
       <header class="ui-head">
@@ -28,42 +30,57 @@ import { AuthService } from '../../core/auth/auth.service';
           <p class="ui-sub">{{ 'devices.body' | transloco }}</p>
         </div>
         @if (canManage()) {
-          <button class="ui-btn is-primary" type="button" (click)="toggleCreate()">
-            {{ (creating() ? 'common.cancel' : 'devices.add') | transloco }}
+          <button class="ui-btn is-primary" type="button" (click)="openCreate()">
+            {{ 'devices.add' | transloco }}
           </button>
         }
       </header>
 
-      @if (error(); as problem) {
-        <p class="ui-note is-error">
-          {{ problem.key | transloco }}
-          @if (problem.code) {
-            <code>{{ problem.code }}</code>
-          }
-        </p>
+      <ng-template #problem>
+        @if (error(); as problem) {
+          <p class="ui-note is-error">
+            {{ problem.key | transloco }}
+            @if (problem.code) {
+              <code>{{ problem.code }}</code>
+            }
+          </p>
+        }
+      </ng-template>
+
+      @if (!creating() && !minted() && !confirm()) {
+        <ng-container *ngTemplateOutlet="problem" />
       }
 
       @if (creating()) {
-        <form class="ui-panel" [formGroup]="form" (ngSubmit)="mint()">
-          <h2 class="ui-title">{{ 'devices.createTitle' | transloco }}</h2>
-          <div class="ui-grid">
-            <label class="ui-field">
-              <span>{{ 'devices.name' | transloco }}</span>
-              <input type="text" formControlName="name" required />
-            </label>
+        <div class="ui-overlay" role="presentation" (keydown.escape)="closeCreate()">
+          <div class="ui-dialog" role="dialog" aria-modal="true" aria-labelledby="create-device">
+            <h2 id="create-device">{{ 'devices.createTitle' | transloco }}</h2>
+            <ng-container *ngTemplateOutlet="problem" />
+            <form [formGroup]="form" (ngSubmit)="mint()">
+              <div class="ui-grid">
+                <label class="ui-field">
+                  <span>{{ 'devices.name' | transloco }}</span>
+                  <input #createName type="text" formControlName="name" required />
+                </label>
+              </div>
+              <div class="ui-actions">
+                <button class="ui-btn" type="button" (click)="closeCreate()" [disabled]="busy()">
+                  {{ 'common.cancel' | transloco }}
+                </button>
+                <button class="ui-btn is-primary" type="submit" [disabled]="form.invalid || busy()">
+                  {{ (busy() ? 'devices.creating' : 'devices.create') | transloco }}
+                </button>
+              </div>
+            </form>
           </div>
-          <div class="ui-actions">
-            <button class="ui-btn is-primary" type="submit" [disabled]="form.invalid || busy()">
-              {{ (busy() ? 'devices.creating' : 'devices.create') | transloco }}
-            </button>
-          </div>
-        </form>
+        </div>
       }
 
       @if (minted(); as reveal) {
         <div class="ui-overlay" role="presentation">
           <div class="ui-dialog" role="dialog" aria-modal="true" aria-labelledby="token-title">
             <h2 id="token-title">{{ 'devices.tokenTitle' | transloco }}</h2>
+            <ng-container *ngTemplateOutlet="problem" />
             <p class="ui-hint">{{ reveal.device.name }}</p>
             <p class="ui-note">{{ 'devices.tokenBody' | transloco }}</p>
             <code class="ui-token">{{ reveal.token }}</code>
@@ -92,6 +109,7 @@ import { AuthService } from '../../core/auth/auth.service';
                   | transloco: { name: target.device.name }
               }}
             </p>
+            <ng-container *ngTemplateOutlet="problem" />
             <div class="ui-actions">
               <button class="ui-btn" type="button" (click)="confirm.set(null)">
                 {{ 'common.cancel' | transloco }}
@@ -171,8 +189,10 @@ import { AuthService } from '../../core/auth/auth.service';
 export class DevicesPage implements OnInit {
   private readonly api = inject(TenantAdminApi);
   private readonly auth = inject(AuthService);
+  private readonly notice = inject(NoticeService);
   private readonly route = inject(ActivatedRoute);
   private readonly fb = inject(FormBuilder);
+  private readonly nameInput = viewChild<ElementRef<HTMLInputElement>>('createName');
 
   readonly assetId = this.route.snapshot.paramMap.get('assetId') ?? '';
   readonly rows = signal<DeviceRow[]>([]);
@@ -192,8 +212,9 @@ export class DevicesPage implements OnInit {
     this.load();
   }
 
-  load(): void {
-    this.loading.set(true);
+  /** `quiet` refreshes in place — a save must not blink the table it confirms. */
+  load(quiet = false): void {
+    if (!quiet) this.loading.set(true);
     this.api.devices(this.assetId).subscribe({
       next: (rows) => {
         this.rows.set(rows);
@@ -201,16 +222,24 @@ export class DevicesPage implements OnInit {
       },
       error: (error: unknown) => {
         this.error.set(describeApiError(error));
-        this.rows.set([]);
+        if (!quiet) this.rows.set([]);
         this.loading.set(false);
       },
     });
   }
 
-  toggleCreate(): void {
-    this.creating.update((open) => !open);
-    this.form.reset({ name: '' });
+  openCreate(): void {
     this.error.set(null);
+    this.form.reset({ name: '' });
+    this.creating.set(true);
+    setTimeout(() => this.nameInput()?.nativeElement.focus());
+  }
+
+  closeCreate(): void {
+    if (this.busy()) return;
+    this.creating.set(false);
+    this.error.set(null);
+    this.form.reset({ name: '' });
   }
 
   mint(): void {
@@ -225,11 +254,13 @@ export class DevicesPage implements OnInit {
         this.form.reset({ name: '' });
         this.copied.set(false);
         this.minted.set(mint);
-        this.load();
+        this.notice.show('toast.deviceMinted', 'success');
+        this.load(true);
       },
       error: (error: unknown) => {
         this.busy.set(false);
         this.error.set(describeApiError(error));
+        this.notice.show(describeApiError(error).key, 'error');
       },
     });
   }
@@ -248,12 +279,14 @@ export class DevicesPage implements OnInit {
         next: () => {
           this.busy.set(false);
           this.confirm.set(null);
-          this.load();
+          this.notice.show('toast.deviceRevoked', 'success');
+          this.load(true);
         },
         error: (error: unknown) => {
           this.busy.set(false);
           this.error.set(describeApiError(error));
-          this.load();
+          this.notice.show(describeApiError(error).key, 'error');
+          this.load(true);
         },
       });
       return;
@@ -265,12 +298,14 @@ export class DevicesPage implements OnInit {
         this.confirm.set(null);
         this.copied.set(false);
         this.minted.set(mint);
-        this.load();
+        this.notice.show('toast.deviceReissued', 'success');
+        this.load(true);
       },
       error: (error: unknown) => {
         this.busy.set(false);
         this.error.set(describeApiError(error));
-        this.load();
+        this.notice.show(describeApiError(error).key, 'error');
+        this.load(true);
       },
     });
   }

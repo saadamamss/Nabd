@@ -1,9 +1,12 @@
-import { Component, computed, inject, OnInit, signal } from '@angular/core';
+import { Component, computed, ElementRef, inject, OnInit, signal, viewChild } from '@angular/core';
+import { NgTemplateOutlet } from '@angular/common';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { TranslocoPipe } from '@jsverse/transloco';
 import { ApiProblem, describeApiError } from '../../core/api/api-error';
 import { TenantAdminApi, UserRow } from '../../core/api/tenant-admin.service';
 import { AuthService } from '../../core/auth/auth.service';
+import { NoticeService } from '../../core/ui/notice.service';
+import { SelectComponent, type SelectOption } from '../../core/ui/select';
 
 const ROLES = [
   { code: 'viewer', key: 'roles.viewer' },
@@ -17,7 +20,7 @@ const ROLES = [
  */
 @Component({
   selector: 'app-users-page',
-  imports: [ReactiveFormsModule, TranslocoPipe],
+  imports: [NgTemplateOutlet, ReactiveFormsModule, SelectComponent, TranslocoPipe],
   template: `
     <section class="ui-page">
       <header class="ui-head">
@@ -27,60 +30,77 @@ const ROLES = [
           <p class="ui-sub">{{ 'users.body' | transloco }}</p>
         </div>
         @if (canManage()) {
-          <button class="ui-btn is-primary" type="button" (click)="toggleCreate()">
-            {{ (creating() ? 'common.cancel' : 'users.add') | transloco }}
+          <button class="ui-btn is-primary" type="button" (click)="openCreate()">
+            {{ 'users.add' | transloco }}
           </button>
         }
       </header>
 
-      @if (error(); as problem) {
-        <p class="ui-note is-error">
-          {{ problem.key | transloco }}
-          @if (problem.code) {
-            <code>{{ problem.code }}</code>
-          }
-        </p>
+      <!-- one error surface, rendered where the user is looking: inside the open
+           dialog, otherwise above the list -->
+      <ng-template #problem>
+        @if (error(); as problem) {
+          <p class="ui-note is-error">
+            {{ problem.key | transloco }}
+            @if (problem.code) {
+              <code>{{ problem.code }}</code>
+            }
+          </p>
+        }
+      </ng-template>
+
+      @if (!creating() && !removeTarget()) {
+        <ng-container *ngTemplateOutlet="problem" />
       }
 
       @if (creating()) {
-        <form class="ui-panel" [formGroup]="form" (ngSubmit)="create()">
-          <h2 class="ui-title">{{ 'users.createTitle' | transloco }}</h2>
-          <div class="ui-grid">
-            <label class="ui-field">
-              <span>{{ 'users.email' | transloco }}</span>
-              <input type="email" formControlName="email" autocomplete="off" required />
-            </label>
-            <label class="ui-field">
-              <span>{{ 'users.displayName' | transloco }}</span>
-              <input type="text" formControlName="displayName" required />
-            </label>
-            <label class="ui-field">
-              <span>{{ 'users.role' | transloco }}</span>
-              <select formControlName="role">
-                @for (role of roles; track role.code) {
-                  <option [value]="role.code">{{ role.key | transloco }}</option>
-                }
-              </select>
-            </label>
-            <label class="ui-field">
-              <span>{{ 'users.locale' | transloco }}</span>
-              <select formControlName="locale">
-                <option value="ar">{{ 'locale.ar' | transloco }}</option>
-                <option value="en">{{ 'locale.en' | transloco }}</option>
-              </select>
-            </label>
-            <label class="ui-field">
-              <span>{{ 'users.password' | transloco }}</span>
-              <input type="password" formControlName="password" autocomplete="new-password" required />
-              <small>{{ 'users.passwordHint' | transloco }}</small>
-            </label>
+        <div class="ui-overlay" role="presentation" (keydown.escape)="closeCreate()">
+          <div class="ui-dialog" role="dialog" aria-modal="true" aria-labelledby="create-person">
+            <h2 id="create-person">{{ 'users.createTitle' | transloco }}</h2>
+            <ng-container *ngTemplateOutlet="problem" />
+            <form [formGroup]="form" (ngSubmit)="create()">
+              <div class="ui-grid">
+                <label class="ui-field">
+                  <span>{{ 'users.email' | transloco }}</span>
+                  <input #createEmail type="email" formControlName="email" autocomplete="off" required />
+                </label>
+                <label class="ui-field">
+                  <span>{{ 'users.displayName' | transloco }}</span>
+                  <input type="text" formControlName="displayName" required />
+                </label>
+                <div class="ui-field">
+                  <span>{{ 'users.role' | transloco }}</span>
+                  <app-select
+                    formControlName="role"
+                    [options]="roleOptions"
+                    [ariaLabel]="'users.role' | transloco"
+                  />
+                </div>
+                <div class="ui-field">
+                  <span>{{ 'users.locale' | transloco }}</span>
+                  <app-select
+                    formControlName="locale"
+                    [options]="localeOptions"
+                    [ariaLabel]="'users.locale' | transloco"
+                  />
+                </div>
+                <label class="ui-field">
+                  <span>{{ 'users.password' | transloco }}</span>
+                  <input type="password" formControlName="password" autocomplete="new-password" required />
+                  <small>{{ 'users.passwordHint' | transloco }}</small>
+                </label>
+              </div>
+              <div class="ui-actions">
+                <button class="ui-btn" type="button" (click)="closeCreate()" [disabled]="creatingBusy()">
+                  {{ 'common.cancel' | transloco }}
+                </button>
+                <button class="ui-btn is-primary" type="submit" [disabled]="form.invalid || creatingBusy()">
+                  {{ (creatingBusy() ? 'users.creating' : 'users.create') | transloco }}
+                </button>
+              </div>
+            </form>
           </div>
-          <div class="ui-actions">
-            <button class="ui-btn is-primary" type="submit" [disabled]="form.invalid || creatingBusy()">
-              {{ (creatingBusy() ? 'users.creating' : 'users.create') | transloco }}
-            </button>
-          </div>
-        </form>
+        </div>
       }
 
       @if (removeTarget(); as target) {
@@ -90,6 +110,7 @@ const ROLES = [
             <p class="ui-note">
               {{ 'users.deleteBody' | transloco: { email: target.email } }}
             </p>
+            <ng-container *ngTemplateOutlet="problem" />
             <div class="ui-actions">
               <button class="ui-btn" type="button" (click)="removeTarget.set(null)">
                 {{ 'common.cancel' | transloco }}
@@ -130,30 +151,26 @@ const ROLES = [
                   </td>
                   <td>
                     @if (canManage()) {
-                      <select
+                      <app-select
+                        [options]="roleOptions"
                         [value]="row.role"
-                        [disabled]="busy()"
-                        (change)="changeRole(row, $any($event.target).value)"
-                        [attr.aria-label]="'users.role' | transloco"
-                      >
-                        @for (role of roles; track role.code) {
-                          <option [value]="role.code">{{ role.key | transloco }}</option>
-                        }
-                      </select>
+                        [busy]="busy() || pendingId() === row.userId"
+                        [ariaLabel]="('users.role' | transloco) + ' — ' + row.email"
+                        (valueChange)="changeRole(row, $event)"
+                      />
                     } @else {
                       <span class="ui-badge">{{ roleKey(row.role) | transloco }}</span>
                     }
                   </td>
                   <td>
-                    <select
+                    <app-select
+                      [options]="localeOptions"
                       [value]="row.locale"
-                      [disabled]="busy() || (!canManage() && row.userId !== me())"
-                      (change)="changeLocale(row, $any($event.target).value)"
-                      [attr.aria-label]="'users.locale' | transloco"
-                    >
-                      <option value="ar">{{ 'locale.ar' | transloco }}</option>
-                      <option value="en">{{ 'locale.en' | transloco }}</option>
-                    </select>
+                      [disabled]="!canManage() && row.userId !== me()"
+                      [busy]="busy() || pendingId() === row.userId"
+                      [ariaLabel]="('users.locale' | transloco) + ' — ' + row.email"
+                      (valueChange)="changeLocale(row, $event)"
+                    />
                   </td>
                   @if (canManage()) {
                     <td>
@@ -180,15 +197,26 @@ const ROLES = [
 export class UsersPage implements OnInit {
   private readonly api = inject(TenantAdminApi);
   private readonly auth = inject(AuthService);
+  private readonly notice = inject(NoticeService);
   private readonly fb = inject(FormBuilder);
+  private readonly emailInput = viewChild<ElementRef<HTMLInputElement>>('createEmail');
 
-  readonly roles = ROLES;
+  readonly roleOptions: readonly SelectOption[] = ROLES.map((role) => ({
+    value: role.code,
+    labelKey: role.key,
+  }));
+  readonly localeOptions: readonly SelectOption[] = [
+    { value: 'ar', labelKey: 'locale.ar' },
+    { value: 'en', labelKey: 'locale.en' },
+  ];
   readonly rows = signal<UserRow[]>([]);
   readonly loading = signal(true);
   readonly error = signal<ApiProblem | null>(null);
   readonly creating = signal(false);
   readonly creatingBusy = signal(false);
   readonly busy = signal(false);
+  /** The one row whose write is in flight (never the whole table). */
+  readonly pendingId = signal<string | null>(null);
   readonly removeTarget = signal<UserRow | null>(null);
 
   readonly me = computed(() => this.auth.user()?.userId ?? '');
@@ -207,8 +235,12 @@ export class UsersPage implements OnInit {
     this.load();
   }
 
-  load(): void {
-    this.loading.set(true);
+  /**
+   * `quiet` refreshes in place: the table keeps its rows and never swaps for the
+   * loading line, so a save does not blink the screen it just confirmed.
+   */
+  load(quiet = false): void {
+    if (!quiet) this.loading.set(true);
     this.api.users(this.tenantId()).subscribe({
       next: (rows) => {
         this.rows.set(rows);
@@ -216,16 +248,25 @@ export class UsersPage implements OnInit {
       },
       error: (error: unknown) => {
         this.error.set(describeApiError(error));
-        this.rows.set([]);
+        if (!quiet) this.rows.set([]);
         this.loading.set(false);
       },
     });
   }
 
-  toggleCreate(): void {
-    this.creating.update((open) => !open);
+  openCreate(): void {
     this.error.set(null);
-    if (this.creating()) this.form.reset({ role: 'viewer', locale: 'en' });
+    this.form.reset({ role: 'viewer', locale: 'en' });
+    this.creating.set(true);
+    // the dialog is a task, so the cursor starts on the first field
+    setTimeout(() => this.emailInput()?.nativeElement.focus());
+  }
+
+  closeCreate(): void {
+    if (this.creatingBusy()) return;
+    this.creating.set(false);
+    this.error.set(null);
+    this.form.reset({ role: 'viewer', locale: 'en' });
   }
 
   create(): void {
@@ -247,32 +288,54 @@ export class UsersPage implements OnInit {
           this.creatingBusy.set(false);
           this.creating.set(false);
           this.form.reset({ role: 'viewer', locale: 'en' });
+          this.notice.show('toast.created', 'success');
           this.load();
         },
         error: (error: unknown) => {
           this.creatingBusy.set(false);
           this.error.set(describeApiError(error));
+          this.notice.show(describeApiError(error).key, 'error');
         },
       });
   }
 
   changeRole(row: UserRow, role: string): void {
-    if (role === row.role) return;
-    this.busy.set(true);
+    if (role === row.role || this.pendingId()) return;
+    const previous = row.role;
+    this.pendingId.set(row.userId);
     this.error.set(null);
+    this.patchRow(row.userId, { role });
     this.api.setRole(this.tenantId(), row.userId, role).subscribe({
-      next: () => this.afterMutation(),
-      error: (error: unknown) => this.failedMutation(error),
+      next: (updated) => {
+        // the PATCH answer IS the row: paint it in place, do not reload the list
+        this.replaceRow(updated);
+        this.pendingId.set(null);
+        this.notice.show('toast.roleChanged', 'success');
+      },
+      error: (error: unknown) => {
+        // a refusal must not leave the select showing a value the door rejected
+        this.patchRow(row.userId, { role: previous });
+        this.failedMutation(error);
+      },
     });
   }
 
   changeLocale(row: UserRow, locale: string): void {
-    if (locale === row.locale) return;
-    this.busy.set(true);
+    if (locale === row.locale || this.pendingId()) return;
+    const previous = row.locale;
+    this.pendingId.set(row.userId);
     this.error.set(null);
+    this.patchRow(row.userId, { locale });
     this.api.setLocale(this.tenantId(), row.userId, locale).subscribe({
-      next: () => this.afterMutation(),
-      error: (error: unknown) => this.failedMutation(error),
+      next: (updated) => {
+        this.replaceRow(updated);
+        this.pendingId.set(null);
+        this.notice.show('toast.localeChanged', 'success');
+      },
+      error: (error: unknown) => {
+        this.patchRow(row.userId, { locale: previous });
+        this.failedMutation(error);
+      },
     });
   }
 
@@ -282,6 +345,7 @@ export class UsersPage implements OnInit {
     this.api.deleteUser(this.tenantId(), row.userId).subscribe({
       next: () => {
         this.removeTarget.set(null);
+        this.notice.show('toast.removed', 'success');
         this.afterMutation();
       },
       error: (error: unknown) => this.failedMutation(error),
@@ -292,15 +356,30 @@ export class UsersPage implements OnInit {
     return ROLES.find((entry) => entry.code === role)?.key ?? 'roles.member';
   }
 
-  /** The server's answer is the truth: refetch instead of patching the array. */
+  /** The server's answer is the truth: refetch quietly instead of blinking. */
   private afterMutation(): void {
     this.busy.set(false);
-    this.load();
+    this.load(true);
+  }
+
+  private replaceRow(updated: UserRow): void {
+    this.rows.update((rows) =>
+      rows.map((row) => (row.userId === updated.userId ? updated : row)),
+    );
+  }
+
+  private patchRow(userId: string, patch: Partial<UserRow>): void {
+    this.rows.update((rows) =>
+      rows.map((row) => (row.userId === userId ? { ...row, ...patch } : row)),
+    );
   }
 
   private failedMutation(error: unknown): void {
+    const problem = describeApiError(error);
     this.busy.set(false);
-    this.error.set(describeApiError(error));
-    this.load();
+    this.pendingId.set(null);
+    this.error.set(problem);
+    this.notice.show(problem.key, 'error');
+    this.load(true);
   }
 }

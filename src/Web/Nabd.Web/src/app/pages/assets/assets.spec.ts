@@ -71,7 +71,7 @@ describe('AssetsPage', () => {
     http.expectOne('/api/v1/templates').flush([TEMPLATE]);
     await fixture.whenStable();
 
-    page.toggleCreate();
+    page.openCreate();
     page.form.setValue({ templateId: 'tpl-1', name: 'Cold room', location: 'Aisle 3', notes: '' });
     page.templateChanged();
     fixture.detectChanges();
@@ -93,6 +93,35 @@ describe('AssetsPage', () => {
     expect(page.rows().length).toBe(1);
   });
 
+  it('opens the create form in a dialog, not a panel above the table, and Cancel leaves without a request', async () => {
+    const { fixture, http } = setup();
+    fixture.detectChanges();
+    http.expectOne((request) => request.url === '/api/v1/assets').flush([]);
+    http.expectOne('/api/v1/templates').flush([TEMPLATE]);
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const host = fixture.nativeElement as HTMLElement;
+    expect(host.querySelector('[role="dialog"]')).toBeNull();
+
+    ([...host.querySelectorAll('button')] as HTMLButtonElement[])
+      .find((button) => button.textContent?.trim() === 'Add asset')!
+      .click();
+    fixture.detectChanges();
+
+    const dialog = host.querySelector('[role="dialog"]') as HTMLElement;
+    expect(dialog).not.toBeNull();
+    expect(dialog.textContent).toContain('New asset');
+    expect(dialog.querySelectorAll('form').length).toBe(1);
+
+    ([...dialog.querySelectorAll('button')] as HTMLButtonElement[])
+      .find((button) => button.textContent?.trim() === 'Cancel')!
+      .click();
+    fixture.detectChanges();
+
+    expect(host.querySelector('[role="dialog"]')).toBeNull();
+  });
+
   it('archives only after confirmation and refetches', async () => {
     const { fixture, http, page } = setup();
     fixture.detectChanges();
@@ -110,13 +139,81 @@ describe('AssetsPage', () => {
     expect(page.rows()).toEqual([]);
   });
 
+  it('draws the checkbox but keeps a real one for keyboards and screen readers', async () => {
+    const { fixture, http } = setup();
+    fixture.detectChanges();
+    http.expectOne((request) => request.url === '/api/v1/assets').flush([ASSET]);
+    http.expectOne('/api/v1/templates').flush([TEMPLATE]);
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const checkbox = (fixture.nativeElement as HTMLElement).querySelector(
+      'input[type="checkbox"]',
+    ) as HTMLInputElement;
+    expect(checkbox).not.toBeNull();
+    expect(checkbox.disabled).toBe(false);
+    expect(checkbox.nextElementSibling?.classList.contains('ui-check-box')).toBe(true);
+    expect(checkbox.nextElementSibling?.getAttribute('aria-hidden')).toBe('true');
+  });
+
+  it('picks a template from the drawn list and shows its channels at once', async () => {
+    const { fixture, http, page } = setup();
+    fixture.detectChanges();
+    http.expectOne((request) => request.url === '/api/v1/assets').flush([]);
+    http.expectOne('/api/v1/templates').flush([TEMPLATE]);
+    await fixture.whenStable();
+
+    page.openCreate();
+    fixture.detectChanges();
+
+    const dialog = (fixture.nativeElement as HTMLElement).querySelector('[role="dialog"]') as HTMLElement;
+    const trigger = dialog.querySelector('app-select .ui-select-trigger') as HTMLButtonElement;
+    // the first field and the required one: the cursor starts on the picker
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(document.activeElement).toBe(trigger);
+    expect(trigger.textContent?.trim()).toBe('Select…');
+
+    trigger.click();
+    fixture.detectChanges();
+    const fridge = [...document.querySelectorAll<HTMLElement>('.ui-select-option')].find(
+      (option) => option.textContent?.trim() === 'Fridge',
+    );
+    fridge!.click();
+    fixture.detectChanges();
+
+    expect(page.form.value.templateId).toBe('tpl-1');
+    expect(page.selectedTemplate()?.channels.length).toBe(1);
+    expect(trigger.textContent?.trim()).toBe('Fridge');
+  });
+
+  it('refreshes quietly after an archive — the table never swaps for the loading line', async () => {
+    const { fixture, http, page } = setup();
+    fixture.detectChanges();
+    http.expectOne((request) => request.url === '/api/v1/assets').flush([ASSET]);
+    http.expectOne('/api/v1/templates').flush([TEMPLATE]);
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    page.archive(ASSET);
+    http.expectOne('/api/v1/assets/a1').flush(null, { status: 204, statusText: 'No Content' });
+    const refresh = http.expectOne((request) => request.url === '/api/v1/assets');
+
+    fixture.detectChanges();
+    expect(page.loading()).toBe(false);
+    expect(page.rows().length).toBe(1);
+    expect((fixture.nativeElement as HTMLElement).querySelector('table')).not.toBeNull();
+
+    refresh.flush([]);
+    await fixture.whenStable();
+  });
+
   it('maps a refused create to the localized code and keeps the form open', async () => {
     const { fixture, http, page } = setup();
     fixture.detectChanges();
     http.expectOne((request) => request.url === '/api/v1/assets').flush([]);
     http.expectOne('/api/v1/templates').flush([TEMPLATE]);
 
-    page.toggleCreate();
+    page.openCreate();
     page.form.setValue({ templateId: 'tpl-9', name: 'Cold room', location: '', notes: '' });
     page.create();
 
@@ -134,7 +231,7 @@ describe('AssetsPage', () => {
     http.expectOne((request) => request.url === '/api/v1/assets').flush([]);
     http.expectOne('/api/v1/templates').flush([TEMPLATE]);
 
-    page.toggleCreate();
+    page.openCreate();
     page.form.setValue({ templateId: 'tpl-1', name: '   ', location: '', notes: '' });
     page.create();
 

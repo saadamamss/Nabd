@@ -65,7 +65,7 @@ describe('DevicesPage', () => {
     http.expectOne('/api/v1/assets/a1/devices').flush([]);
     await fixture.whenStable();
 
-    page.toggleCreate();
+    page.openCreate();
     page.form.setValue({ name: 'Probe 1' });
     page.mint();
 
@@ -82,6 +82,33 @@ describe('DevicesPage', () => {
     page.minted.set(null);
     fixture.detectChanges();
     expect((fixture.nativeElement as HTMLElement).textContent).not.toContain(TOKEN);
+  });
+
+  it('never stacks two dialogs: minting closes the create dialog before the token appears', async () => {
+    const { fixture, http, page } = setup();
+    fixture.detectChanges();
+    http.expectOne('/api/v1/assets/a1/devices').flush([]);
+    await fixture.whenStable();
+
+    const host = fixture.nativeElement as HTMLElement;
+    ([...host.querySelectorAll('button')] as HTMLButtonElement[])
+      .find((button) => button.textContent?.trim() === 'Add device')!
+      .click();
+    fixture.detectChanges();
+    expect(host.querySelectorAll('[role="dialog"]').length).toBe(1);
+
+    page.form.setValue({ name: 'Probe 1' });
+    page.mint();
+    http.expectOne('/api/v1/assets/a1/devices').flush({ device: DEVICE, token: TOKEN });
+    http.expectOne('/api/v1/assets/a1/devices').flush([DEVICE]);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const dialogs = [...host.querySelectorAll('[role="dialog"]')] as HTMLElement[];
+    expect(dialogs.length).toBe(1);
+    expect(dialogs[0].textContent).toContain('Copy this token now');
+    expect(dialogs[0].textContent).toContain(TOKEN);
   });
 
   it('reissues through the device door and reveals the new token', async () => {
@@ -110,9 +137,14 @@ describe('DevicesPage', () => {
     page.run({ kind: 'revoke', device: DEVICE });
 
     http.expectOne('/api/v1/devices/d1').flush(null, { status: 204, statusText: 'No Content' });
-    http
-      .expectOne('/api/v1/assets/a1/devices')
-      .flush([{ ...DEVICE, isActive: false, tokenRevokedAtUtc: '2026-11-23T00:00:00Z' }]);
+    const refresh = http.expectOne('/api/v1/assets/a1/devices');
+
+    // a refresh, not a reload: the row stays on screen while the GET is in flight
+    fixture.detectChanges();
+    expect(page.loading()).toBe(false);
+    expect(page.rows().length).toBe(1);
+
+    refresh.flush([{ ...DEVICE, isActive: false, tokenRevokedAtUtc: '2026-11-23T00:00:00Z' }]);
     await fixture.whenStable();
 
     expect(page.confirm()).toBeNull();
