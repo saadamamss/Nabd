@@ -29,7 +29,9 @@
     "empty": "Nothing here yet.",
     "back": "Back",
     "name": "Name",
-    "optional": "optional"
+    "optional": "optional",
+    "select": "Select…",
+    "noOptions": "No options"
   },
   "users": {
     "title": "People",
@@ -103,7 +105,9 @@
   },
   "rules": {
     "title": "Rules",
-    "body": "Threshold rules for this device, plus the offline guard every device is born with.",
+    "body": "Range rules fire when a reading leaves its limits; the offline guard fires when the device goes silent.",
+    "thresholdTitle": "Range rules",
+    "thresholdHint": "A rule fires when its channel stays outside the range for the duration below, then waits out the cooldown.",
     "add": "Add threshold rule",
     "empty": "No threshold rules yet.",
     "createTitle": "New threshold rule",
@@ -124,7 +128,7 @@
     "deleteTitle": "Delete rule",
     "deleteBody": "Delete this threshold rule? Alerts it opened stay in the audit trail.",
     "offlineTitle": "Offline guard",
-    "offlineBody": "Seeded with every device. Tune it; it cannot be created or deleted.",
+    "offlineBody": "Fires when the device goes silent: no reading arrives for the minutes below. Every device is born with it; tune it — it cannot be created or deleted.",
     "offlineAfter": "Offline after (minutes)",
     "offlineSave": "Save guard",
     "offlineSaving": "Saving…",
@@ -147,8 +151,13 @@
     "day6": "Saturday",
     "utcNote": "UTC",
     "thresholdOffline": "Offline",
+    "secondsShort": "s",
+    "minutesShort": "min",
     "backToDevice": "Back to devices",
-    "noFreeChannel": "Every numeric channel already has a range rule — edit it above instead of adding a second one."
+    "noFreeChannel": "Every numeric channel already has a range rule — edit it above instead of adding a second one.",
+    "noFreeChannelBody": "This device has no numeric channel without a range rule: the template's presets seeded one for every channel that has limits (a fridge's 2–8 °C temperature, for example). Tune those rules in the table above. To add a new rule, use a device from a template that leaves a numeric channel without limits — the Water Tank's Flow, for example.",
+    "noNumericChannel": "This device’s template has no numeric channels, so no range rule can be created here.",
+    "noTemplateContext": "This page arrived without its device’s template, so it cannot know the channels. Open it from the device list — the device row carries the template."
   },
   "locale": {
     "switchTo": "العربية",
@@ -241,5 +250,21 @@
     "invalidMuteWindow": "A quiet window is invalid: day 0–6 and start before end, within a day.",
     "muteWindowOverlap": "Two quiet windows overlap.",
     "deviceRevoked": "This device is revoked. A revoked token cannot be restored — recovery is a new device."
+  },
+  "toast": {
+    "created": "Added.",
+    "roleChanged": "Role changed.",
+    "localeChanged": "Language updated.",
+    "removed": "Person removed.",
+    "assetCreated": "Asset created.",
+    "assetUpdated": "Changes saved.",
+    "assetArchived": "Asset archived.",
+    "deviceMinted": "Device created — copy the token now; it is shown once.",
+    "deviceReissued": "New token issued — the old one no longer works.",
+    "deviceRevoked": "Device revoked. It cannot be restored.",
+    "ruleCreated": "Rule created.",
+    "ruleUpdated": "Rule saved.",
+    "ruleDeleted": "Rule deleted.",
+    "guardSaved": "Offline guard saved."
   }
 }

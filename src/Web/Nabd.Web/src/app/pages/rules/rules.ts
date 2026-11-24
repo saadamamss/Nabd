@@ -1,10 +1,13 @@
-import { Component, computed, inject, OnInit, signal } from '@angular/core';
+import { NgTemplateOutlet } from '@angular/common';
+import { Component, computed, ElementRef, inject, OnInit, signal, viewChild } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { TranslocoPipe, TranslocoService } from '@jsverse/transloco';
 import { ApiProblem, describeApiError } from '../../core/api/api-error';
 import { MuteWindow, RuleRow, TenantAdminApi } from '../../core/api/tenant-admin.service';
 import { AuthService } from '../../core/auth/auth.service';
+import { NoticeService } from '../../core/ui/notice.service';
+import { SelectComponent, type SelectOption } from '../../core/ui/select';
 
 const DAYS = [0, 1, 2, 3, 4, 5, 6] as const;
 
@@ -29,7 +32,7 @@ function timeToMinutes(value: string): number {
  */
 @Component({
   selector: 'app-rules-page',
-  imports: [ReactiveFormsModule, RouterLink, TranslocoPipe],
+  imports: [NgTemplateOutlet, ReactiveFormsModule, RouterLink, SelectComponent, TranslocoPipe],
   template: `
     <section class="ui-page">
       <header class="ui-head">
@@ -41,156 +44,200 @@ function timeToMinutes(value: string): number {
           <p class="ui-sub">{{ 'rules.body' | transloco }}</p>
         </div>
         @if (canManage()) {
-          <button class="ui-btn is-primary" type="button" (click)="toggleCreate()">
-            {{ (creating() ? 'common.cancel' : 'rules.add') | transloco }}
+          <button
+            class="ui-btn is-primary"
+            type="button"
+            (click)="openCreate()"
+            [disabled]="!openChannels().length"
+            [attr.title]="openChannels().length ? null : ('rules.noFreeChannel' | transloco)"
+          >
+            {{ 'rules.add' | transloco }}
           </button>
         }
       </header>
 
-      @if (error(); as problem) {
-        <p class="ui-note is-error">
-          {{ problem.key | transloco }}
-          @if (problem.code) {
-            <code>{{ problem.code }}</code>
-          }
+      <ng-template #problem>
+        @if (error(); as problem) {
+          <p class="ui-note is-error">
+            {{ problem.key | transloco }}
+            @if (problem.code) {
+              <code>{{ problem.code }}</code>
+            }
+          </p>
+        }
+      </ng-template>
+
+      @if (!creating() && !editing() && !deleteTarget()) {
+        <ng-container *ngTemplateOutlet="problem" />
+      }
+
+      <!-- the truth before the table: why "add" is unavailable, and what each
+           kind of rule means -->
+      @if (!loading() && templatesReady() && !openChannels().length) {
+        <p class="ui-note">
+          {{
+            (!templateId
+              ? 'rules.noTemplateContext'
+              : hasNumericChannels()
+                ? 'rules.noFreeChannelBody'
+                : 'rules.noNumericChannel'
+            ) | transloco
+          }}
         </p>
       }
 
       @if (creating()) {
-        <form class="ui-panel" [formGroup]="createForm" (ngSubmit)="create()">
-          <h2 class="ui-title">{{ 'rules.createTitle' | transloco }}</h2>
-          <div class="ui-grid">
-            <label class="ui-field">
-              <span>{{ 'rules.channel' | transloco }}</span>
-              <select formControlName="channelKey">
-                @for (channel of openChannels(); track channel.key) {
-                  <option [value]="channel.key">{{ channelName(channel) }} · {{ channel.unit }}</option>
+        <div class="ui-overlay" role="presentation" (keydown.escape)="closeCreate()">
+          <div class="ui-dialog" role="dialog" aria-modal="true" aria-labelledby="create-rule">
+            <h2 id="create-rule">{{ 'rules.createTitle' | transloco }}</h2>
+            <ng-container *ngTemplateOutlet="problem" />
+            <form [formGroup]="createForm" (ngSubmit)="create()">
+              <div class="ui-grid">
+                @if (openChannels().length) {
+                  <div class="ui-field">
+                    <span>{{ 'rules.channel' | transloco }}</span>
+                    <app-select
+                      formControlName="channelKey"
+                      [options]="channelOptions()"
+                      [ariaLabel]="'rules.channel' | transloco"
+                    />
+                  </div>
                 }
-              </select>
-            </label>
-            <label class="ui-field">
-              <span>{{ 'rules.low' | transloco }} ({{ unitFor(createForm.getRawValue().channelKey) }})</span>
-              <input type="number" step="any" formControlName="thresholdLow" />
-            </label>
-            <label class="ui-field">
-              <span>{{ 'rules.high' | transloco }} ({{ unitFor(createForm.getRawValue().channelKey) }})</span>
-              <input type="number" step="any" formControlName="thresholdHigh" />
-            </label>
-            <label class="ui-field">
-              <span>{{ 'rules.duration' | transloco }}</span>
-              <input type="number" min="1" formControlName="durationSeconds" />
-            </label>
-            <label class="ui-field">
-              <span>{{ 'rules.cooldown' | transloco }}</span>
-              <input type="number" min="0" formControlName="cooldownMinutes" />
-            </label>
-            <label class="ui-field">
-              <span>{{ 'rules.severity' | transloco }}</span>
-              <select formControlName="severity">
-                <option value="warn">{{ 'rules.severityWarn' | transloco }}</option>
-                <option value="critical">{{ 'rules.severityCritical' | transloco }}</option>
-              </select>
-            </label>
+                <label class="ui-field">
+                  <span>{{ 'rules.low' | transloco }} ({{ unitFor(createForm.getRawValue().channelKey) }})</span>
+                  <input #createLow type="number" step="any" formControlName="thresholdLow" />
+                </label>
+                <label class="ui-field">
+                  <span>{{ 'rules.high' | transloco }} ({{ unitFor(createForm.getRawValue().channelKey) }})</span>
+                  <input type="number" step="any" formControlName="thresholdHigh" />
+                </label>
+                <label class="ui-field">
+                  <span>{{ 'rules.duration' | transloco }}</span>
+                  <input type="number" min="1" formControlName="durationSeconds" />
+                </label>
+                <label class="ui-field">
+                  <span>{{ 'rules.cooldown' | transloco }}</span>
+                  <input type="number" min="0" formControlName="cooldownMinutes" />
+                </label>
+                <div class="ui-field">
+                  <span>{{ 'rules.severity' | transloco }}</span>
+                  <app-select
+                    formControlName="severity"
+                    [options]="severityOptions"
+                    [ariaLabel]="'rules.severity' | transloco"
+                  />
+                </div>
+              </div>
+              @if (openChannels().length === 0) {
+                <p class="ui-note">{{ 'rules.noFreeChannel' | transloco }}</p>
+              }
+              <p class="ui-hint">{{ 'rules.quietLater' | transloco }}</p>
+              <div class="ui-actions">
+                <button class="ui-btn" type="button" (click)="closeCreate()" [disabled]="busy()">
+                  {{ 'common.cancel' | transloco }}
+                </button>
+                <button
+                  class="ui-btn is-primary"
+                  type="submit"
+                  [disabled]="createForm.invalid || busy() || openChannels().length === 0"
+                >
+                  {{ (busy() ? 'rules.creating' : 'rules.create') | transloco }}
+                </button>
+              </div>
+            </form>
           </div>
-          @if (openChannels().length === 0) {
-            <p class="ui-note">{{ 'rules.noFreeChannel' | transloco }}</p>
-          }
-          <p class="ui-hint">{{ 'rules.quietLater' | transloco }}</p>
-          <div class="ui-actions">
-            <button
-              class="ui-btn is-primary"
-              type="submit"
-              [disabled]="createForm.invalid || busy() || openChannels().length === 0"
-            >
-              {{ (busy() ? 'rules.creating' : 'rules.create') | transloco }}
-            </button>
-          </div>
-        </form>
+        </div>
       }
 
       @if (editing(); as rule) {
-        <form class="ui-panel" [formGroup]="editForm" (ngSubmit)="saveEdit(rule)">
-          <h2 class="ui-title">{{ 'rules.editTitle' | transloco }}</h2>
-          <div class="ui-grid">
-            <label class="ui-field">
-              <span>{{ 'rules.channel' | transloco }}</span>
-              <input type="text" formControlName="channelKey" />
-            </label>
-            <label class="ui-field">
-              <span>{{ 'rules.low' | transloco }} ({{ unitFor(rule.channelKey) }})</span>
-              <input type="number" step="any" formControlName="thresholdLow" />
-            </label>
-            <label class="ui-field">
-              <span>{{ 'rules.high' | transloco }} ({{ unitFor(rule.channelKey) }})</span>
-              <input type="number" step="any" formControlName="thresholdHigh" />
-            </label>
-            <label class="ui-field">
-              <span>{{ 'rules.duration' | transloco }}</span>
-              <input type="number" min="1" formControlName="durationSeconds" />
-            </label>
-            <label class="ui-field">
-              <span>{{ 'rules.cooldown' | transloco }}</span>
-              <input type="number" min="0" formControlName="cooldownMinutes" />
-            </label>
-            <label class="ui-field">
-              <span>{{ 'rules.severity' | transloco }}</span>
-              <select formControlName="severity">
-                <option value="warn">{{ 'rules.severityWarn' | transloco }}</option>
-                <option value="critical">{{ 'rules.severityCritical' | transloco }}</option>
-              </select>
-            </label>
-            <label class="ui-check">
-              <input type="checkbox" formControlName="enabled" />
-              {{ 'rules.enabled' | transloco }}
-            </label>
-          </div>
-
-          <h3 class="ui-title">{{ 'rules.quietTitle' | transloco }}</h3>
-          <p class="ui-hint">{{ 'rules.quietHint' | transloco }}</p>
-
-          @if (!windows().length) {
-            <p class="ui-hint">{{ 'rules.quietNone' | transloco }}</p>
-          } @else {
-            @for (window of windows(); track $index) {
+        <div class="ui-overlay" role="presentation" (keydown.escape)="editing.set(null)">
+          <div class="ui-dialog" role="dialog" aria-modal="true" aria-labelledby="edit-rule">
+            <h2 id="edit-rule">{{ 'rules.editTitle' | transloco }}</h2>
+            <ng-container *ngTemplateOutlet="problem" />
+            <form [formGroup]="editForm" (ngSubmit)="saveEdit(rule)">
               <div class="ui-grid">
                 <label class="ui-field">
-                  <span>{{ 'rules.day' | transloco }}</span>
-                  <select (change)="setDay($index, $any($event.target).value)">
-                    @for (day of days; track day) {
-                      <option [value]="day" [selected]="day === window.dayOfWeek">
-                        {{ 'rules.day' + day | transloco }}
-                      </option>
-                    }
-                  </select>
+                  <span>{{ 'rules.channel' | transloco }}</span>
+                  <input type="text" formControlName="channelKey" />
                 </label>
                 <label class="ui-field">
-                  <span>{{ 'rules.start' | transloco }} ({{ 'rules.utcNote' | transloco }})</span>
-                  <input type="time" [value]="timeOf(window.startMinute)" (change)="setTime($index, 'start', $event)" />
+                  <span>{{ 'rules.low' | transloco }} ({{ unitFor(rule.channelKey) }})</span>
+                  <input type="number" step="any" formControlName="thresholdLow" />
                 </label>
                 <label class="ui-field">
-                  <span>{{ 'rules.end' | transloco }} ({{ 'rules.utcNote' | transloco }})</span>
-                  <input type="time" [value]="timeOf(window.endMinute)" (change)="setTime($index, 'end', $event)" />
+                  <span>{{ 'rules.high' | transloco }} ({{ unitFor(rule.channelKey) }})</span>
+                  <input type="number" step="any" formControlName="thresholdHigh" />
                 </label>
-                <p class="ui-hint">{{ 'rules.preview' | transloco }}: {{ localPreview(window) }}</p>
+                <label class="ui-field">
+                  <span>{{ 'rules.duration' | transloco }}</span>
+                  <input type="number" min="1" formControlName="durationSeconds" />
+                </label>
+                <label class="ui-field">
+                  <span>{{ 'rules.cooldown' | transloco }}</span>
+                  <input type="number" min="0" formControlName="cooldownMinutes" />
+                </label>
+                <div class="ui-field">
+                  <span>{{ 'rules.severity' | transloco }}</span>
+                  <app-select
+                    formControlName="severity"
+                    [options]="severityOptions"
+                    [ariaLabel]="'rules.severity' | transloco"
+                  />
+                </div>
+                <label class="ui-check">
+                  <input type="checkbox" formControlName="enabled" />
+                  <span class="ui-check-box" aria-hidden="true"></span>
+                  {{ 'rules.enabled' | transloco }}
+                </label>
               </div>
-              <button class="ui-btn is-small is-danger" type="button" (click)="removeWindow($index)">
-                {{ 'rules.quietRemove' | transloco }}
-              </button>
-            }
-          }
 
-          <div class="ui-actions">
-            <button class="ui-btn" type="button" (click)="addWindow()">
-              {{ 'rules.quietAdd' | transloco }}
-            </button>
-            <button class="ui-btn is-primary" type="submit" [disabled]="editForm.invalid || busy()">
-              {{ (busy() ? 'rules.saving' : 'rules.save') | transloco }}
-            </button>
-            <button class="ui-btn" type="button" (click)="editing.set(null)">
-              {{ 'common.cancel' | transloco }}
-            </button>
+              <h3 class="ui-title">{{ 'rules.quietTitle' | transloco }}</h3>
+              <p class="ui-hint">{{ 'rules.quietHint' | transloco }}</p>
+
+              @if (!windows().length) {
+                <p class="ui-hint">{{ 'rules.quietNone' | transloco }}</p>
+              } @else {
+                @for (window of windows(); track $index) {
+                  <div class="ui-grid">
+                    <div class="ui-field">
+                      <span>{{ 'rules.day' | transloco }}</span>
+                      <app-select
+                        [options]="dayOptions"
+                        [value]="window.dayOfWeek + ''"
+                        [ariaLabel]="'rules.day' | transloco"
+                        (valueChange)="setDay($index, $event)"
+                      />
+                    </div>
+                    <label class="ui-field">
+                      <span>{{ 'rules.start' | transloco }} ({{ 'rules.utcNote' | transloco }})</span>
+                      <input type="time" [value]="timeOf(window.startMinute)" (change)="setTime($index, 'start', $event)" />
+                    </label>
+                    <label class="ui-field">
+                      <span>{{ 'rules.end' | transloco }} ({{ 'rules.utcNote' | transloco }})</span>
+                      <input type="time" [value]="timeOf(window.endMinute)" (change)="setTime($index, 'end', $event)" />
+                    </label>
+                    <p class="ui-hint">{{ 'rules.preview' | transloco }}: {{ localPreview(window) }}</p>
+                  </div>
+                  <button class="ui-btn is-small is-danger" type="button" (click)="removeWindow($index)">
+                    {{ 'rules.quietRemove' | transloco }}
+                  </button>
+                }
+              }
+
+              <div class="ui-actions">
+                <button class="ui-btn" type="button" (click)="addWindow()">
+                  {{ 'rules.quietAdd' | transloco }}
+                </button>
+                <button class="ui-btn" type="button" (click)="editing.set(null)" [disabled]="busy()">
+                  {{ 'common.cancel' | transloco }}
+                </button>
+                <button class="ui-btn is-primary" type="submit" [disabled]="editForm.invalid || busy()">
+                  {{ (busy() ? 'rules.saving' : 'rules.save') | transloco }}
+                </button>
+              </div>
+            </form>
           </div>
-        </form>
+        </div>
       }
 
       @if (deleteTarget(); as rule) {
@@ -198,6 +245,7 @@ function timeToMinutes(value: string): number {
           <div class="ui-dialog" role="dialog" aria-modal="true" aria-labelledby="delete-rule">
             <h2 id="delete-rule">{{ 'rules.deleteTitle' | transloco }}</h2>
             <p class="ui-note">{{ 'rules.deleteBody' | transloco }}</p>
+            <ng-container *ngTemplateOutlet="problem" />
             <div class="ui-actions">
               <button class="ui-btn" type="button" (click)="deleteTarget.set(null)">
                 {{ 'common.cancel' | transloco }}
@@ -213,6 +261,8 @@ function timeToMinutes(value: string): number {
       @if (loading()) {
         <p class="ui-note">{{ 'common.loading' | transloco }}</p>
       } @else {
+        <h2 class="ui-title">{{ 'rules.thresholdTitle' | transloco }}</h2>
+        <p class="ui-hint">{{ 'rules.thresholdHint' | transloco }}</p>
         @if (!thresholds().length) {
           <p class="ui-panel ui-empty">{{ 'rules.empty' | transloco }}</p>
         } @else {
@@ -232,9 +282,15 @@ function timeToMinutes(value: string): number {
               <tbody>
                 @for (rule of thresholds(); track rule.ruleId) {
                   <tr>
-                    <td>{{ rule.channelKey }}</td>
-                    <td>{{ rule.thresholdLow ?? '—' }} / {{ rule.thresholdHigh ?? '—' }}</td>
-                    <td>{{ rule.durationSeconds }}s · {{ rule.cooldownMinutes }}m</td>
+                    <td>{{ channelLabel(rule.channelKey) }}</td>
+                    <td>
+                      {{ rule.thresholdLow ?? '—' }} – {{ rule.thresholdHigh ?? '—' }}
+                      {{ unitFor(rule.channelKey) }}
+                    </td>
+                    <td>
+                      {{ rule.durationSeconds }} {{ 'rules.secondsShort' | transloco }} ·
+                      {{ rule.cooldownMinutes }} {{ 'rules.minutesShort' | transloco }}
+                    </td>
                     <td>
                       <span class="ui-badge" [class.is-warn]="rule.severity === 'warn'" [class.is-critical]="rule.severity === 'critical'">
                         {{ (rule.severity === 'critical' ? 'rules.severityCritical' : 'rules.severityWarn') | transloco }}
@@ -258,7 +314,7 @@ function timeToMinutes(value: string): number {
             </table>
           </div>
         }
-
+        <br>
         @if (offline(); as rule) {
           <form class="ui-panel" [formGroup]="offlineForm" (ngSubmit)="saveOffline(rule)">
             <h2 class="ui-title">{{ 'rules.offlineTitle' | transloco }}</h2>
@@ -272,15 +328,18 @@ function timeToMinutes(value: string): number {
                 <span>{{ 'rules.cooldown' | transloco }}</span>
                 <input type="number" min="0" formControlName="cooldownMinutes" />
               </label>
-              <label class="ui-field">
+              <div class="ui-field">
                 <span>{{ 'rules.severity' | transloco }}</span>
-                <select formControlName="severity">
-                  <option value="warn">{{ 'rules.severityWarn' | transloco }}</option>
-                  <option value="critical">{{ 'rules.severityCritical' | transloco }}</option>
-                </select>
-              </label>
+                <app-select
+                  formControlName="severity"
+                  [options]="severityOptions"
+                  [disabled]="!canManage()"
+                  [ariaLabel]="'rules.severity' | transloco"
+                />
+              </div>
               <label class="ui-check">
                 <input type="checkbox" formControlName="enabled" />
+                <span class="ui-check-box" aria-hidden="true"></span>
                 {{ 'rules.enabled' | transloco }}
               </label>
             </fieldset>
@@ -300,11 +359,21 @@ function timeToMinutes(value: string): number {
 export class RulesPage implements OnInit {
   private readonly api = inject(TenantAdminApi);
   private readonly auth = inject(AuthService);
+  private readonly notice = inject(NoticeService);
   private readonly route = inject(ActivatedRoute);
   private readonly fb = inject(FormBuilder);
+  private readonly lowInput = viewChild<ElementRef<HTMLInputElement>>('createLow');
   private readonly transloco = inject(TranslocoService);
 
   readonly days = DAYS;
+  readonly severityOptions: readonly SelectOption[] = [
+    { value: 'warn', labelKey: 'rules.severityWarn' },
+    { value: 'critical', labelKey: 'rules.severityCritical' },
+  ];
+  readonly dayOptions: readonly SelectOption[] = DAYS.map((day) => ({
+    value: String(day),
+    labelKey: `rules.day${day}`,
+  }));
   readonly deviceId = this.route.snapshot.paramMap.get('deviceId') ?? '';
   readonly assetId = signal(this.route.snapshot.queryParamMap.get('assetId') ?? '');
   readonly templateId = this.route.snapshot.queryParamMap.get('templateId') ?? '';
@@ -344,6 +413,21 @@ export class RulesPage implements OnInit {
     );
   });
 
+  readonly hasNumericChannels = computed(() =>
+    this.channels().some((channel) => channel.dataType === 'number'),
+  );
+
+  readonly channelOptions = computed<readonly SelectOption[]>(() => {
+    const arabic = this.transloco.activeLang() === 'ar';
+    return this.openChannels().map((channel) => ({
+      value: channel.key,
+      label: `${arabic ? channel.nameAr : channel.nameEn} · ${channel.unit}`,
+    }));
+  });
+
+  /** False until the template answer lands (or is not needed): no note on a guess. */
+  readonly templatesReady = signal(!this.templateId);
+
   readonly createForm = this.fb.group({
     channelKey: ['', Validators.required],
     thresholdLow: [null as number | null],
@@ -376,15 +460,20 @@ export class RulesPage implements OnInit {
         next: (templates) => {
           const template = templates.find((item) => item.templateId === this.templateId);
           this.channels.set(template?.channels ?? []);
+          this.templatesReady.set(true);
         },
-        error: (error: unknown) => this.error.set(describeApiError(error)),
+        error: (error: unknown) => {
+          this.error.set(describeApiError(error));
+          this.templatesReady.set(true);
+        },
       });
     }
     this.load();
   }
 
-  load(): void {
-    this.loading.set(true);
+  /** `quiet` refreshes in place — a save must not blink the table it confirms. */
+  load(quiet = false): void {
+    if (!quiet) this.loading.set(true);
     this.api.rules(this.deviceId).subscribe({
       next: (rules) => {
         this.rules.set(rules);
@@ -402,14 +491,13 @@ export class RulesPage implements OnInit {
       },
       error: (error: unknown) => {
         this.error.set(describeApiError(error));
-        this.rules.set([]);
+        if (!quiet) this.rules.set([]);
         this.loading.set(false);
       },
     });
   }
 
-  toggleCreate(): void {
-    this.creating.update((open) => !open);
+  openCreate(): void {
     this.error.set(null);
     this.createForm.reset({
       channelKey: this.openChannels()[0]?.key ?? '',
@@ -419,6 +507,14 @@ export class RulesPage implements OnInit {
       cooldownMinutes: 60,
       severity: 'warn',
     });
+    this.creating.set(true);
+    setTimeout(() => this.lowInput()?.nativeElement.focus());
+  }
+
+  closeCreate(): void {
+    if (this.busy()) return;
+    this.creating.set(false);
+    this.error.set(null);
   }
 
   private repickChannel(): void {
@@ -459,11 +555,13 @@ export class RulesPage implements OnInit {
         next: () => {
           this.busy.set(false);
           this.creating.set(false);
-          this.load();
+          this.notice.show('toast.ruleCreated', 'success');
+          this.load(true);
         },
         error: (error: unknown) => {
           this.busy.set(false);
           this.error.set(describeApiError(error));
+          this.notice.show(describeApiError(error).key, 'error');
         },
       });
   }
@@ -503,11 +601,13 @@ export class RulesPage implements OnInit {
         next: () => {
           this.busy.set(false);
           this.editing.set(null);
-          this.load();
+          this.notice.show('toast.ruleUpdated', 'success');
+          this.load(true);
         },
         error: (error: unknown) => {
           this.busy.set(false);
           this.error.set(describeApiError(error));
+          this.notice.show(describeApiError(error).key, 'error');
         },
       });
   }
@@ -528,11 +628,13 @@ export class RulesPage implements OnInit {
       .subscribe({
         next: () => {
           this.busy.set(false);
-          this.load();
+          this.notice.show('toast.guardSaved', 'success');
+          this.load(true);
         },
         error: (error: unknown) => {
           this.busy.set(false);
           this.error.set(describeApiError(error));
+          this.notice.show(describeApiError(error).key, 'error');
         },
       });
   }
@@ -544,12 +646,14 @@ export class RulesPage implements OnInit {
       next: () => {
         this.busy.set(false);
         this.deleteTarget.set(null);
-        this.load();
+        this.notice.show('toast.ruleDeleted', 'success');
+        this.load(true);
       },
       error: (error: unknown) => {
         this.busy.set(false);
         this.error.set(describeApiError(error));
-        this.load();
+        this.notice.show(describeApiError(error).key, 'error');
+        this.load(true);
       },
     });
   }
@@ -605,11 +709,17 @@ export class RulesPage implements OnInit {
     return this.isArabic() ? channel.nameAr : channel.nameEn;
   }
 
+  /** The table must speak the template's language, not the channel's key. */
+  channelLabel(channelKey: string | null): string {
+    const channel = this.channels().find((item) => item.key === channelKey);
+    return channel ? this.channelName(channel) : (channelKey ?? '—');
+  }
+
   unitFor(channelKey: string | null): string {
     return this.channels().find((channel) => channel.key === channelKey)?.unit ?? '';
   }
 
   private isArabic(): boolean {
-    return this.transloco.getActiveLang() === 'ar';
+    return this.transloco.activeLang() === 'ar';
   }
 }

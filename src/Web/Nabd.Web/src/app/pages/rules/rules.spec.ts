@@ -55,7 +55,10 @@ const OFFLINE = {
   muteWindows: [],
 };
 
-function setup(session = SESSION): {
+function setup(
+  session = SESSION,
+  query: Record<string, string> = { assetId: 'a1', templateId: 'tpl-1' },
+): {
   fixture: ComponentFixture<RulesPage>;
   http: HttpTestingController;
   page: RulesPage;
@@ -72,7 +75,7 @@ function setup(session = SESSION): {
         useValue: {
           snapshot: {
             paramMap: convertToParamMap({ deviceId: 'd1' }),
-            queryParamMap: convertToParamMap({ assetId: 'a1', templateId: 'tpl-1' }),
+            queryParamMap: convertToParamMap(query),
           },
         },
       },
@@ -96,7 +99,7 @@ describe('RulesPage', () => {
     http.expectOne('/api/v1/devices/d1/rules').flush([OFFLINE]);
     await fixture.whenStable();
 
-    page.toggleCreate();
+    page.openCreate();
     expect(page.createForm.getRawValue()).toMatchObject({
       durationSeconds: 60,
       cooldownMinutes: 60,
@@ -140,12 +143,19 @@ describe('RulesPage', () => {
 
     expect(page.openChannels().map((channel) => channel.key)).toEqual(['temp']);
 
-    page.toggleCreate();
+    page.openCreate();
     fixture.detectChanges();
-    const options = [...(fixture.nativeElement as HTMLElement).querySelectorAll('select option')]
-      .map((option) => (option as HTMLOptionElement).value)
-      .filter((value) => value !== 'warn' && value !== 'critical');
-    expect(options).toEqual(['temp']);
+    expect(page.channelOptions().map((option) => option.value)).toEqual(['temp']);
+
+    const dialog = (fixture.nativeElement as HTMLElement).querySelector('[role="dialog"]') as HTMLElement;
+    const channel = dialog.querySelector('app-select .ui-select-trigger') as HTMLButtonElement;
+    channel.click();
+    fixture.detectChanges();
+    const rendered = [...document.querySelectorAll<HTMLElement>('.ui-select-option')].map(
+      (option) => option.textContent?.trim(),
+    );
+    // the bool channel is absent from the list itself, not merely filtered after
+    expect(rendered).toEqual(['Temperature · °C']);
   });
 
   it('says why nothing can be created when every numeric channel already has a range rule', async () => {
@@ -157,14 +167,83 @@ describe('RulesPage', () => {
 
     expect(page.openChannels()).toEqual([]);
 
-    page.toggleCreate();
+    page.openCreate();
     fixture.detectChanges();
     const host = fixture.nativeElement as HTMLElement;
-    expect(host.textContent).toContain('Every numeric channel already has a range rule');
-    const submit = [...host.querySelectorAll('button')].find((button) =>
+    const dialog = host.querySelector('[role="dialog"]') as HTMLElement;
+    expect(dialog).not.toBeNull();
+    expect(dialog.textContent).toContain('Every numeric channel already has a range rule');
+    const submit = [...dialog.querySelectorAll('button')].find((button) =>
       button.textContent?.includes('Create rule'),
     );
     expect(submit?.disabled).toBe(true);
+  });
+
+  it('says why create is unavailable, and does not offer a button that opens a dead picker', async () => {
+    const { fixture, http } = setup();
+    fixture.detectChanges();
+    http.expectOne('/api/v1/templates').flush([TEMPLATE]);
+    http.expectOne('/api/v1/devices/d1/rules').flush([THRESHOLD, OFFLINE]);
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const host = fixture.nativeElement as HTMLElement;
+    expect(host.textContent).toContain('no numeric channel without a range rule');
+    const add = [...host.querySelectorAll('button')].find(
+      (button) => button.textContent?.trim() === 'Add threshold rule',
+    ) as HTMLButtonElement;
+    expect(add.disabled).toBe(true);
+  });
+
+  it('refreshes quietly after a write — the table never swaps for the loading line', async () => {
+    const { fixture, http, page } = setup();
+    fixture.detectChanges();
+    http.expectOne('/api/v1/templates').flush([TEMPLATE]);
+    http.expectOne('/api/v1/devices/d1/rules').flush([THRESHOLD, OFFLINE]);
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    page.deleteTarget.set(THRESHOLD);
+    page.remove(THRESHOLD);
+    http.expectOne('/api/v1/devices/d1/rules/r1').flush(null, { status: 204, statusText: 'No Content' });
+    const refresh = http.expectOne('/api/v1/devices/d1/rules');
+
+    fixture.detectChanges();
+    expect(page.loading()).toBe(false);
+    expect(page.thresholds().length).toBe(1);
+    expect((fixture.nativeElement as HTMLElement).querySelector('table')).not.toBeNull();
+
+    refresh.flush([OFFLINE]);
+    await fixture.whenStable();
+  });
+
+  it('names the rule by its channel’s template name and unit, never the raw key', async () => {
+    const { fixture, http } = setup();
+    fixture.detectChanges();
+    http.expectOne('/api/v1/templates').flush([TEMPLATE]);
+    http.expectOne('/api/v1/devices/d1/rules').flush([THRESHOLD, OFFLINE]);
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const row = (fixture.nativeElement as HTMLElement).querySelector('tbody tr') as HTMLElement;
+    expect(row.textContent).toContain('Temperature');
+    expect(row.textContent).toContain('2 – 8 °C');
+    expect(row.textContent).toContain('60 s · 60 min');
+  });
+
+  it('never guesses a template: a direct link without one says so and offers no create', async () => {
+    const { fixture, http } = setup(SESSION, {});
+    fixture.detectChanges();
+    http.expectOne('/api/v1/devices/d1/rules').flush([OFFLINE]);
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const host = fixture.nativeElement as HTMLElement;
+    expect(host.textContent).toContain('arrived without its device');
+    const add = [...host.querySelectorAll('button')].find(
+      (button) => button.textContent?.trim() === 'Add threshold rule',
+    ) as HTMLButtonElement;
+    expect(add.disabled).toBe(true);
   });
 
   it('round-trips quiet hours in UTC from the edit view only', async () => {
@@ -198,7 +277,7 @@ describe('RulesPage', () => {
     await fixture.whenStable();
   });
 
-  it('shows each quiet window on its OWN day (selectedness on the option, not the select)', async () => {
+  it('shows each quiet window on its OWN day in the drawn select', async () => {
     const { fixture, http, page } = setup();
     fixture.detectChanges();
     http.expectOne('/api/v1/templates').flush([TEMPLATE]);
@@ -208,10 +287,41 @@ describe('RulesPage', () => {
     page.startEdit({ ...THRESHOLD, muteWindows: [{ dayOfWeek: 2, startMinute: 780, endMinute: 900 }] });
     fixture.detectChanges();
 
-    const daySelect = [
-      ...(fixture.nativeElement as HTMLElement).querySelectorAll('select'),
-    ].find((select) => select.options.length === 7) as HTMLSelectElement;
-    expect(daySelect.value).toBe('2');
+    const triggers = [
+      ...(fixture.nativeElement as HTMLElement).querySelectorAll(
+        '[role="dialog"] app-select .ui-select-trigger',
+      ),
+    ];
+    // the second select is the day of the window (0 = Sunday), so it reads Tuesday
+    // rather than the list's first day
+    expect(triggers.map((trigger) => trigger.textContent?.trim())).toContain('Tuesday');
+  });
+
+  it('changes a quiet window’s day from the drawn list', async () => {
+    const { fixture, http, page } = setup();
+    fixture.detectChanges();
+    http.expectOne('/api/v1/templates').flush([TEMPLATE]);
+    http.expectOne('/api/v1/devices/d1/rules').flush([THRESHOLD, OFFLINE]);
+    await fixture.whenStable();
+
+    page.startEdit({ ...THRESHOLD, muteWindows: [{ dayOfWeek: 2, startMinute: 780, endMinute: 900 }] });
+    fixture.detectChanges();
+
+    const day = [
+      ...(fixture.nativeElement as HTMLElement).querySelectorAll(
+        '[role="dialog"] app-select .ui-select-trigger',
+      ),
+    ][1] as HTMLButtonElement;
+    day.click();
+    fixture.detectChanges();
+    const friday = [...document.querySelectorAll<HTMLElement>('.ui-select-option')].find(
+      (option) => option.textContent?.trim() === 'Friday',
+    );
+    friday!.click();
+    fixture.detectChanges();
+
+    expect(page.windows()[0].dayOfWeek).toBe(5);
+    expect(day.textContent?.trim()).toBe('Friday');
   });
 
   it('tunes the seeded offline guard without sending thresholds or windows', async () => {
@@ -290,5 +400,9 @@ describe('RulesPage', () => {
     expect(labels).not.toContain('Delete');
     expect(labels).not.toContain('Save guard');
     expect(host.querySelector('fieldset')?.disabled).toBe(true);
+    const severity = host.querySelector(
+      'fieldset app-select .ui-select-trigger',
+    ) as HTMLButtonElement;
+    expect(severity.disabled).toBe(true);
   });
 });

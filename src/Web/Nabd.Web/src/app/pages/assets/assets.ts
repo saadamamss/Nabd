@@ -1,10 +1,13 @@
-import { Component, computed, inject, OnInit, signal } from '@angular/core';
+import { NgTemplateOutlet } from '@angular/common';
+import { Component, computed, ElementRef, inject, OnInit, signal, viewChild } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { RouterLink } from '@angular/router';
-import { TranslocoPipe } from '@jsverse/transloco';
+import { TranslocoPipe, TranslocoService } from '@jsverse/transloco';
 import { ApiProblem, describeApiError } from '../../core/api/api-error';
 import { AssetRow, TenantAdminApi, TemplateRow } from '../../core/api/tenant-admin.service';
 import { AuthService } from '../../core/auth/auth.service';
+import { NoticeService } from '../../core/ui/notice.service';
+import { SelectComponent, type SelectOption } from '../../core/ui/select';
 
 /**
  * Assets (spec 02): the template is picked once and then immutable — the
@@ -12,7 +15,7 @@ import { AuthService } from '../../core/auth/auth.service';
  */
 @Component({
   selector: 'app-assets-page',
-  imports: [ReactiveFormsModule, RouterLink, TranslocoPipe],
+  imports: [NgTemplateOutlet, ReactiveFormsModule, RouterLink, SelectComponent, TranslocoPipe],
   template: `
     <section class="ui-page">
       <header class="ui-head">
@@ -22,98 +25,119 @@ import { AuthService } from '../../core/auth/auth.service';
           <p class="ui-sub">{{ 'assets.body' | transloco }}</p>
         </div>
         @if (canManage()) {
-          <button class="ui-btn is-primary" type="button" (click)="toggleCreate()">
-            {{ (creating() ? 'common.cancel' : 'assets.add') | transloco }}
+          <button class="ui-btn is-primary" type="button" (click)="openCreate()">
+            {{ 'assets.add' | transloco }}
           </button>
         }
       </header>
 
-      @if (error(); as problem) {
-        <p class="ui-note is-error">
-          {{ problem.key | transloco }}
-          @if (problem.code) {
-            <code>{{ problem.code }}</code>
-          }
-        </p>
+      <ng-template #problem>
+        @if (error(); as problem) {
+          <p class="ui-note is-error">
+            {{ problem.key | transloco }}
+            @if (problem.code) {
+              <code>{{ problem.code }}</code>
+            }
+          </p>
+        }
+      </ng-template>
+
+      @if (!creating() && !editing() && !archiveTarget()) {
+        <ng-container *ngTemplateOutlet="problem" />
       }
 
       @if (creating()) {
-        <form class="ui-panel" [formGroup]="form" (ngSubmit)="create()">
-          <h2 class="ui-title">{{ 'assets.createTitle' | transloco }}</h2>
-          <div class="ui-grid">
-            <label class="ui-field">
-              <span>{{ 'assets.template' | transloco }}</span>
-              <select formControlName="templateId" (change)="templateChanged()">
-                <option value="">{{ 'assets.none' | transloco }}</option>
-                @for (template of templates(); track template.templateId) {
-                  <option [value]="template.templateId">{{ templateName(template) }}</option>
-                }
-              </select>
-              <small>{{ 'assets.templateHint' | transloco }}</small>
-            </label>
-            <label class="ui-field">
-              <span>{{ 'assets.name' | transloco }}</span>
-              <input type="text" formControlName="name" required />
-            </label>
-            <label class="ui-field">
-              <span>{{ 'assets.location' | transloco }}</span>
-              <input type="text" formControlName="location" />
-            </label>
-            <label class="ui-field">
-              <span>{{ 'assets.notes' | transloco }}</span>
-              <input type="text" formControlName="notes" />
-            </label>
-          </div>
+        <div class="ui-overlay" role="presentation" (keydown.escape)="closeCreate()">
+          <div class="ui-dialog" role="dialog" aria-modal="true" aria-labelledby="create-asset">
+            <h2 id="create-asset">{{ 'assets.createTitle' | transloco }}</h2>
+            <ng-container *ngTemplateOutlet="problem" />
+            <form [formGroup]="form" (ngSubmit)="create()">
+              <div class="ui-grid">
+                <div class="ui-field">
+                  <span>{{ 'assets.template' | transloco }}</span>
+                  <app-select
+                    #createTemplate
+                    formControlName="templateId"
+                    [options]="templateOptions()"
+                    [required]="true"
+                    [ariaLabel]="'assets.template' | transloco"
+                    (valueChange)="templateChanged()"
+                  />
+                  <small>{{ 'assets.templateHint' | transloco }}</small>
+                </div>
+                <label class="ui-field">
+                  <span>{{ 'assets.name' | transloco }}</span>
+                  <input #createName type="text" formControlName="name" required />
+                </label>
+                <label class="ui-field">
+                  <span>{{ 'assets.location' | transloco }}</span>
+                  <input type="text" formControlName="location" />
+                </label>
+                <label class="ui-field">
+                  <span>{{ 'assets.notes' | transloco }}</span>
+                  <input type="text" formControlName="notes" />
+                </label>
+              </div>
 
-          @if (selectedTemplate(); as template) {
-            <p class="ui-hint">{{ 'assets.channels' | transloco }}:</p>
-            <p class="ui-hint">
-              @for (channel of template.channels; track channel.key) {
-                <span class="ui-badge">
-                  {{ channelName(channel) }} · {{ channel.unit }}
-                </span>
+              @if (selectedTemplate(); as template) {
+                <p class="ui-hint">{{ 'assets.channels' | transloco }}:</p>
+                <p class="ui-hint">
+                  @for (channel of template.channels; track channel.key) {
+                    <span class="ui-badge">
+                      {{ channelName(channel) }} · {{ channel.unit }}
+                    </span>
+                  }
+                </p>
               }
-            </p>
-          }
 
-          <div class="ui-actions">
-            <button class="ui-btn is-primary" type="submit" [disabled]="form.invalid || busy()">
-              {{ (busy() ? 'assets.creating' : 'assets.create') | transloco }}
-            </button>
+              <div class="ui-actions">
+                <button class="ui-btn" type="button" (click)="closeCreate()" [disabled]="busy()">
+                  {{ 'common.cancel' | transloco }}
+                </button>
+                <button class="ui-btn is-primary" type="submit" [disabled]="form.invalid || busy()">
+                  {{ (busy() ? 'assets.creating' : 'assets.create') | transloco }}
+                </button>
+              </div>
+            </form>
           </div>
-        </form>
+        </div>
       }
 
       @if (editing(); as row) {
-        <form class="ui-panel" [formGroup]="editForm" (ngSubmit)="saveEdit(row)">
-          <h2 class="ui-title">{{ 'assets.editTitle' | transloco }}</h2>
-          <div class="ui-grid">
-            <label class="ui-field">
-              <span>{{ 'assets.name' | transloco }}</span>
-              <input type="text" formControlName="name" required />
-            </label>
-            <label class="ui-field">
-              <span>{{ 'assets.location' | transloco }}</span>
-              <input type="text" formControlName="location" />
-            </label>
-            <label class="ui-field">
-              <span>{{ 'assets.notes' | transloco }}</span>
-              <input type="text" formControlName="notes" />
-            </label>
-            <label class="ui-field">
-              <span>{{ 'assets.templateLocked' | transloco }}</span>
-              <input type="text" [value]="templateNameFor(row.templateId)" disabled />
-            </label>
+        <div class="ui-overlay" role="presentation" (keydown.escape)="editing.set(null)">
+          <div class="ui-dialog" role="dialog" aria-modal="true" aria-labelledby="edit-asset">
+            <h2 id="edit-asset">{{ 'assets.editTitle' | transloco }}</h2>
+            <ng-container *ngTemplateOutlet="problem" />
+            <form [formGroup]="editForm" (ngSubmit)="saveEdit(row)">
+              <div class="ui-grid">
+                <label class="ui-field">
+                  <span>{{ 'assets.name' | transloco }}</span>
+                  <input type="text" formControlName="name" required />
+                </label>
+                <label class="ui-field">
+                  <span>{{ 'assets.location' | transloco }}</span>
+                  <input type="text" formControlName="location" />
+                </label>
+                <label class="ui-field">
+                  <span>{{ 'assets.notes' | transloco }}</span>
+                  <input type="text" formControlName="notes" />
+                </label>
+                <label class="ui-field">
+                  <span>{{ 'assets.templateLocked' | transloco }}</span>
+                  <input type="text" [value]="templateNameFor(row.templateId)" disabled />
+                </label>
+              </div>
+              <div class="ui-actions">
+                <button class="ui-btn" type="button" (click)="editing.set(null)" [disabled]="busy()">
+                  {{ 'common.cancel' | transloco }}
+                </button>
+                <button class="ui-btn is-primary" type="submit" [disabled]="editForm.invalid || busy()">
+                  {{ (busy() ? 'assets.saving' : 'assets.save') | transloco }}
+                </button>
+              </div>
+            </form>
           </div>
-          <div class="ui-actions">
-            <button class="ui-btn" type="button" (click)="editing.set(null)">
-              {{ 'common.cancel' | transloco }}
-            </button>
-            <button class="ui-btn is-primary" type="submit" [disabled]="editForm.invalid || busy()">
-              {{ (busy() ? 'assets.saving' : 'assets.save') | transloco }}
-            </button>
-          </div>
-        </form>
+        </div>
       }
 
       @if (archiveTarget(); as target) {
@@ -121,6 +145,7 @@ import { AuthService } from '../../core/auth/auth.service';
           <div class="ui-dialog" role="dialog" aria-modal="true" aria-labelledby="archive-asset">
             <h2 id="archive-asset">{{ 'assets.archiveTitle' | transloco }}</h2>
             <p class="ui-note">{{ 'assets.archiveBody' | transloco: { name: target.name } }}</p>
+            <ng-container *ngTemplateOutlet="problem" />
             <div class="ui-actions">
               <button class="ui-btn" type="button" (click)="archiveTarget.set(null)">
                 {{ 'common.cancel' | transloco }}
@@ -136,6 +161,7 @@ import { AuthService } from '../../core/auth/auth.service';
       <div class="ui-toolbar">
         <label class="ui-check">
           <input type="checkbox" [checked]="includeArchived()" (change)="toggleArchived($event)" />
+          <span class="ui-check-box" aria-hidden="true"></span>
           {{ 'assets.showArchived' | transloco }}
         </label>
       </div>
@@ -195,7 +221,11 @@ import { AuthService } from '../../core/auth/auth.service';
 export class AssetsPage implements OnInit {
   private readonly api = inject(TenantAdminApi);
   private readonly auth = inject(AuthService);
+  private readonly notice = inject(NoticeService);
   private readonly fb = inject(FormBuilder);
+  private readonly nameInput = viewChild<ElementRef<HTMLInputElement>>('createName');
+  private readonly templateSelect = viewChild<SelectComponent>('createTemplate');
+  private readonly transloco = inject(TranslocoService);
 
   readonly rows = signal<AssetRow[]>([]);
   readonly templates = signal<TemplateRow[]>([]);
@@ -227,6 +257,14 @@ export class AssetsPage implements OnInit {
     this.templates().find((template) => template.templateId === this.selectedTemplateId()),
   );
 
+  readonly templateOptions = computed<readonly SelectOption[]>(() => {
+    const arabic = this.transloco.activeLang() === 'ar';
+    return this.templates().map((template) => ({
+      value: template.templateId,
+      label: arabic ? template.nameAr : template.nameEn,
+    }));
+  });
+
   ngOnInit(): void {
     this.load();
     this.api.templates().subscribe({
@@ -235,8 +273,9 @@ export class AssetsPage implements OnInit {
     });
   }
 
-  load(): void {
-    this.loading.set(true);
+  /** `quiet` refreshes in place — a save must not blink the table it confirms. */
+  load(quiet = false): void {
+    if (!quiet) this.loading.set(true);
     this.api.assets(this.includeArchived()).subscribe({
       next: (rows) => {
         this.rows.set(rows);
@@ -244,17 +283,27 @@ export class AssetsPage implements OnInit {
       },
       error: (error: unknown) => {
         this.error.set(describeApiError(error));
-        this.rows.set([]);
+        if (!quiet) this.rows.set([]);
         this.loading.set(false);
       },
     });
   }
 
-  toggleCreate(): void {
-    this.creating.update((open) => !open);
+  openCreate(): void {
     this.error.set(null);
     this.selectedTemplateId.set('');
-    if (this.creating()) this.form.reset({ templateId: '', name: '', location: '', notes: '' });
+    this.form.reset({ templateId: '', name: '', location: '', notes: '' });
+    this.creating.set(true);
+    // the template is the first field and the one the form cannot go without
+    setTimeout(() => this.templateSelect()?.focus());
+  }
+
+  closeCreate(): void {
+    if (this.busy()) return;
+    this.creating.set(false);
+    this.error.set(null);
+    this.selectedTemplateId.set('');
+    this.form.reset({ templateId: '', name: '', location: '', notes: '' });
   }
 
   templateChanged(): void {
@@ -279,11 +328,13 @@ export class AssetsPage implements OnInit {
           this.busy.set(false);
           this.creating.set(false);
           this.selectedTemplateId.set('');
-          this.load();
+          this.notice.show('toast.assetCreated', 'success');
+          this.load(true);
         },
         error: (error: unknown) => {
           this.busy.set(false);
           this.error.set(describeApiError(error));
+          this.notice.show(describeApiError(error).key, 'error');
         },
       });
   }
@@ -309,11 +360,13 @@ export class AssetsPage implements OnInit {
         next: () => {
           this.busy.set(false);
           this.editing.set(null);
-          this.load();
+          this.notice.show('toast.assetUpdated', 'success');
+          this.load(true);
         },
         error: (error: unknown) => {
           this.busy.set(false);
           this.error.set(describeApiError(error));
+          this.notice.show(describeApiError(error).key, 'error');
         },
       });
   }
@@ -325,19 +378,21 @@ export class AssetsPage implements OnInit {
       next: () => {
         this.busy.set(false);
         this.archiveTarget.set(null);
-        this.load();
+        this.notice.show('toast.assetArchived', 'success');
+        this.load(true);
       },
       error: (error: unknown) => {
         this.busy.set(false);
         this.error.set(describeApiError(error));
-        this.load();
+        this.notice.show(describeApiError(error).key, 'error');
+        this.load(true);
       },
     });
   }
 
   toggleArchived(event: Event): void {
     this.includeArchived.set((event.target as HTMLInputElement).checked);
-    this.load();
+    this.load(true);
   }
 
   templateName(template: TemplateRow): string {
@@ -354,6 +409,6 @@ export class AssetsPage implements OnInit {
   }
 
   private isArabic(): boolean {
-    return this.auth.user()?.locale === 'ar' || document.documentElement.lang === 'ar';
+    return this.transloco.activeLang() === 'ar';
   }
 }
