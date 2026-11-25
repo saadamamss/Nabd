@@ -293,7 +293,25 @@
     "reset": "مسح المرشّحات",
     "showingLatest": "تُعرض أحدث {{count}} من {{limit}} كحد أقصى.",
     "assetUnknown": "أصل خارج هذه القائمة",
-    "none": "—"
+    "none": "—",
+    "backToList": "رجوع إلى التنبيهات",
+    "titleInAr": "العنوان (بالعربية)",
+    "titleInEn": "العنوان (بالإنجليزية)",
+    "evidence": "البيانات المرصودة",
+    "evidenceValue": "القراءة",
+    "evidenceThreshold": "الحد عند التجاوز",
+    "evidenceChannel": "القناة",
+    "evidenceDevice": "الجهاز",
+    "evidenceSilence": "الصمت (بالدقائق)",
+    "evidenceLastSeen": "آخر ظهور",
+    "noEvidence": "لا توجد قراءات مرفقة بهذا التنبيه.",
+    "state": "حالة التنبيه",
+    "acknowledgedAt": "وقت التأكيد",
+    "resolvedAt": "وقت الحل",
+    "notAcknowledged": "غير مؤكَّد",
+    "notResolved": "لم يُحلّ بعد",
+    "quietHours": "لم يُرسَل إشعار",
+    "quietHoursBody": "وصل هذا التنبيه خلال فترة الصمت، فلم يصل إشعار إلى أحد. لكنه تنبيه قائم."
   },
   "pages": {
     "assets": {

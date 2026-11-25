@@ -1,3 +1,4 @@
+import { Component } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { HttpErrorResponse } from '@angular/common/http';
 import { provideHttpClient } from '@angular/common/http';
@@ -15,12 +16,17 @@ import {
   DEFAULT_FILTERS,
   QueryRead,
   doorQuery,
+  focusedAlertId,
   queryParams,
   readFilters,
   severityKey,
   statusKey,
   titleFor,
 } from './alerts-model';
+
+/** The detail route is S3a's page; this spec only needs its address to resolve. */
+@Component({ selector: 'app-alert-detail-stub', template: '' })
+class DetailStub {}
 
 // P5 spec 05, S2 — the list + filters + URL state, RED first.
 //
@@ -34,6 +40,7 @@ function query(values: Record<string, string>): QueryRead {
 }
 
 const ASSET_ID = 'a3f1c2d4-5b6e-4f70-8a91-0b2c3d4e5f60';
+const ALERT_ID = 'c46fd719-b725-4630-be85-b46d5d85df37';
 
 function asset(assetId: string, name: string): AssetRow {
   return { assetId, tenantId: 't1', templateId: 'tpl', name, location: null, notes: null, isActive: true };
@@ -95,6 +102,12 @@ describe('alerts filter model', () => {
     });
   });
 
+  it('forwards the dashboard’s focused alert, and ignores a broken id', () => {
+    expect(focusedAlertId(query({ alertId: ALERT_ID }))).toBe(ALERT_ID);
+    expect(focusedAlertId(query({ alertId: 'not-a-guid' }))).toBeNull();
+    expect(focusedAlertId(query({}))).toBeNull();
+  });
+
   it('names the locales it knows and shows the rest as received', () => {
     expect(titleFor({ titleEn: 'Warm', titleAr: 'حار' }, 'ar')).toBe('حار');
     expect(titleFor({ titleEn: 'Warm', titleAr: 'حار' }, 'en')).toBe('Warm');
@@ -118,7 +131,10 @@ describe('AlertsPage', () => {
       providers: [
         provideHttpClient(),
         provideHttpClientTesting(),
-        provideRouter([{ path: 'alerts', component: AlertsPage }]),
+        provideRouter([
+          { path: 'alerts', component: AlertsPage },
+          { path: 'alerts/:alertId', component: DetailStub },
+        ]),
         ...provideTestTransloco(),
       ],
     });
@@ -163,6 +179,21 @@ describe('AlertsPage', () => {
     expect(text()).toContain('Open');
     // the ack column is honest about nothing having happened
     expect(text()).toContain('—');
+  });
+
+  it('marks a muted episode on its row, whatever the status', async () => {
+    flushAssets();
+    flushAlerts([
+      alert({ alertId: '11111111-1111-4111-8111-111111111111', quietHoursSuppressed: true }),
+      alert({ alertId: ALERT_ID, status: 'acknowledged', quietHoursSuppressed: true }),
+      alert({ alertId: '22222222-2222-4222-8222-222222222222', quietHoursSuppressed: false }),
+    ]);
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(text()).toContain('Not notified');
+    const badges = (fixture.nativeElement as HTMLElement).querySelectorAll('[data-quiet-hours]');
+    expect(badges.length).toBe(2);
   });
 
   it('navigates with the filter, and the door receives exactly that filter', async () => {
@@ -257,6 +288,19 @@ describe('AlertsPage', () => {
 
     expect(page.problem()?.key).toBe('errors.alertFilter');
     expect(text()).toContain('That filter is not valid.');
+  });
+
+  it('forwards ?alertId= to the alert’s own address instead of ignoring it', async () => {
+    flushAssets();
+    flushAlerts([alert()]);
+
+    const router = TestBed.inject(Router);
+    await router.navigateByUrl(`/alerts?alertId=${ALERT_ID}`);
+    await fixture.whenStable();
+
+    expect(router.url).toBe(`/alerts/${ALERT_ID}`);
+    // the redirect leaves this page; any read it started is not the list's
+    http.match(() => true);
   });
 
   it('shows a loading line before the first answer', () => {

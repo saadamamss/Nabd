@@ -1,11 +1,12 @@
 import { Component, computed, inject, OnDestroy, OnInit, signal } from '@angular/core';
-import { ActivatedRoute, Router } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { Subscription } from 'rxjs';
 import { TranslocoPipe, TranslocoService } from '@jsverse/transloco';
 import { ApiProblem, describeApiError } from '../../core/api/api-error';
 import { AlertRow, AlertsApi } from '../../core/api/alerts.service';
 import { AssetRow, TenantAdminApi } from '../../core/api/tenant-admin.service';
 import { SelectComponent } from '../../core/ui/select';
+import { QuietHoursBadge } from './quiet-hours-badge';
 import {
   AlertFilters,
   AlertLimit,
@@ -17,6 +18,7 @@ import {
   STATUS_FILTERS,
   assetNameOf,
   doorQuery,
+  focusedAlertId,
   hasFilters,
   queryParams,
   readFilters,
@@ -35,7 +37,7 @@ import {
  */
 @Component({
   selector: 'app-alerts-page',
-  imports: [SelectComponent, TranslocoPipe],
+  imports: [QuietHoursBadge, RouterLink, SelectComponent, TranslocoPipe],
   template: `
     <section class="ui-page">
       <header class="ui-head">
@@ -170,7 +172,12 @@ import {
                       }
                     </span>
                   </td>
-                  <td>{{ row.title }}</td>
+                  <td>
+                    <a [routerLink]="['/alerts', row.alertId]">{{ row.title }}</a>
+                    @if (row.quietHoursSuppressed) {
+                      <div class="alert-flag"><app-quiet-hours-badge /></div>
+                    }
+                  </td>
                   <td>{{ assetName(row.assetId) || ('alerts.assetUnknown' | transloco) }}</td>
                   <td>{{ absolute(row.openedAt) }}</td>
                   <td>
@@ -189,6 +196,10 @@ import {
     </section>
   `,
   styles: `
+    .alert-flag {
+      margin-block-start: 0.3rem;
+    }
+
     .alert-icon {
       flex: none;
       inline-size: 0.85rem;
@@ -249,6 +260,14 @@ export class AlertsPage implements OnInit, OnDestroy {
 
     // One road for the first load, a pasted link, a filter change and back/forward.
     this.paramsSub = this.route.queryParamMap.subscribe((query) => {
+      // The dashboard's "open alert" arrives here with `?alertId=` (spec 03); the
+      // alert's own address is the detail route, so forward it instead of ignoring it.
+      const focused = focusedAlertId(query);
+      if (focused) {
+        void this.router.navigate(['/alerts', focused], { replaceUrl: true });
+        return;
+      }
+
       this.filters.set(readFilters(query));
       this.load();
     });

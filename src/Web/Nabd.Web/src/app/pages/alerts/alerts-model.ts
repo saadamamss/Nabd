@@ -1,5 +1,5 @@
 import { Params } from '@angular/router';
-import { AlertQuery } from '../../core/api/alerts.service';
+import { AlertDetail, AlertQuery } from '../../core/api/alerts.service';
 
 /**
  * P5 spec 05, S2 — the alert list's filter vocabulary, pure and testable.
@@ -71,9 +71,23 @@ export function readFilters(query: QueryRead): AlertFilters {
   return {
     status: isStatus(status) ? status : 'all',
     severity: isSeverity(severity) ? severity : 'all',
-    assetId: assetId && GUID.test(assetId) ? assetId.toLowerCase() : '',
+    assetId: isGuid(assetId) ? assetId.toLowerCase() : '',
     limit: query.get('limit') === '500' ? 500 : 100,
   };
+}
+
+export function isGuid(value: string | null | undefined): value is string {
+  return typeof value === 'string' && GUID.test(value);
+}
+
+/**
+ * The dashboard links here with `?alertId=` (spec 03). The detail route is the
+ * alert's real address, so a focused id is forwarded, never left as a dead
+ * parameter the list silently ignores.
+ */
+export function focusedAlertId(query: QueryRead): string | null {
+  const alertId = query.get('alertId');
+  return isGuid(alertId) ? alertId.toLowerCase() : null;
 }
 
 /** The URL form: defaults are absent, so a plain `/alerts` is a clean address. */
@@ -131,6 +145,73 @@ export function severityKey(severity: string): string | null {
 /** The server ships both titles; the locale picks one, it never re-translates. */
 export function titleFor(alert: { titleEn: string; titleAr: string }, lang: string): string {
   return lang === 'ar' ? alert.titleAr : alert.titleEn;
+}
+
+/**
+ * One typed fact of the detail view. Numbers are marked so the template can keep
+ * them LTR inside RTL chrome; nothing here is re-derived from the rule.
+ */
+export interface AlertFact {
+  key: string;
+  value: string;
+  numeric?: boolean;
+}
+
+/**
+ * The evidence as the alert stored it (`AlertDetail`, copied at crossing time).
+ * The rule is never re-read: a later PATCH of thresholds must not rewrite what a
+ * human saw at 3 AM (test fact 7). Offline alerts carry silence instead of a
+ * reading, so absent facts are simply absent.
+ */
+export function evidenceFacts(
+  detail: AlertDetail | null | undefined,
+  lang: string,
+): AlertFact[] {
+  if (!detail) return [];
+
+  const number = new Intl.NumberFormat(lang, { maximumFractionDigits: 2 });
+  const when = new Intl.DateTimeFormat(lang, { dateStyle: 'medium', timeStyle: 'short' });
+  const facts: AlertFact[] = [];
+
+  if (detail.value != null) {
+    facts.push({ key: 'alerts.evidenceValue', value: number.format(detail.value), numeric: true });
+  }
+
+  const low = detail.thresholdLow;
+  const high = detail.thresholdHigh;
+  if (low != null && high != null) {
+    facts.push({
+      key: 'alerts.evidenceThreshold',
+      value: `${number.format(low)} – ${number.format(high)}`,
+      numeric: true,
+    });
+  } else if (high != null) {
+    facts.push({ key: 'alerts.evidenceThreshold', value: `> ${number.format(high)}`, numeric: true });
+  } else if (low != null) {
+    facts.push({ key: 'alerts.evidenceThreshold', value: `< ${number.format(low)}`, numeric: true });
+  }
+
+  if (detail.channelKey) {
+    facts.push({ key: 'alerts.evidenceChannel', value: detail.channelKey, numeric: true });
+  }
+
+  if (detail.deviceId) {
+    facts.push({ key: 'alerts.evidenceDevice', value: detail.deviceId, numeric: true });
+  }
+
+  if (detail.offlineGapMinutes != null) {
+    facts.push({
+      key: 'alerts.evidenceSilence',
+      value: number.format(detail.offlineGapMinutes),
+      numeric: true,
+    });
+  }
+
+  if (detail.lastSeenAtUtc) {
+    facts.push({ key: 'alerts.evidenceLastSeen', value: when.format(new Date(detail.lastSeenAtUtc)) });
+  }
+
+  return facts;
 }
 
 /**

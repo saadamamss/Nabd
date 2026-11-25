@@ -64,4 +64,9 @@ export class AlertsApi {
 
     return this.http.get<AlertRow[]>(`${this.base}/api/v1/alerts`, { params });
   }
+
+  /** One alert, with the evidence it stored when it opened (`GET /{id}`). */
+  get(alertId: string): Observable<AlertRow> {
+    return this.http.get<AlertRow>(`${this.base}/api/v1/alerts/${alertId}`);
+  }
 }

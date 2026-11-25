@@ -293,7 +293,25 @@
     "reset": "Clear filters",
     "showingLatest": "Showing the latest {{count}} of up to {{limit}}.",
     "assetUnknown": "Asset outside this list",
-    "none": "—"
+    "none": "—",
+    "backToList": "Back to alerts",
+    "titleInAr": "Title (Arabic)",
+    "titleInEn": "Title (English)",
+    "evidence": "Evidence",
+    "evidenceValue": "Reading",
+    "evidenceThreshold": "Threshold at crossing",
+    "evidenceChannel": "Channel",
+    "evidenceDevice": "Device",
+    "evidenceSilence": "Silence (minutes)",
+    "evidenceLastSeen": "Last heard",
+    "noEvidence": "This alert carries no readings.",
+    "state": "Alert state",
+    "acknowledgedAt": "Acknowledged at",
+    "resolvedAt": "Resolved at",
+    "notAcknowledged": "Not acknowledged",
+    "notResolved": "Not resolved yet",
+    "quietHours": "Not notified",
+    "quietHoursBody": "This alert opened during a quiet-hours window, so nobody was notified. It is still an alert."
   },
   "pages": {
     "assets": {
