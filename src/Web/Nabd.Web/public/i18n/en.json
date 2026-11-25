@@ -311,7 +311,21 @@
     "notAcknowledged": "Not acknowledged",
     "notResolved": "Not resolved yet",
     "quietHours": "Not notified",
-    "quietHoursBody": "This alert opened during a quiet-hours window, so nobody was notified. It is still an alert."
+    "quietHoursBody": "This alert opened during a quiet-hours window, so nobody was notified. It is still an alert.",
+    "timeline": "History",
+    "noEvents": "No events recorded for this alert yet.",
+    "someUser": "A user",
+    "eventOpened": "Opened",
+    "eventReopened": "Reopened",
+    "eventAcknowledged": "Acknowledged",
+    "eventResolved": "Resolved",
+    "eventSuppressed": "Suppressed",
+    "eventDeduplicated": "Deduplicated",
+    "reasonMuteWindow": "Quiet hours",
+    "reasonCooldown": "Cooldown",
+    "reasonConditionRestored": "Condition restored",
+    "reasonDeviceOnlineRestored": "Device back online",
+    "reasonManual": "Resolved manually"
   },
   "pages": {
     "assets": {

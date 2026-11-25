@@ -4,26 +4,39 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { ActivatedRoute, convertToParamMap, provideRouter } from '@angular/router';
 import { BehaviorSubject } from 'rxjs';
 import { TranslocoService } from '@jsverse/transloco';
-import { AlertRow } from '../../core/api/alerts.service';
-import { AssetRow } from '../../core/api/tenant-admin.service';
+import { AlertEvent, AlertRow } from '../../core/api/alerts.service';
+import { AssetRow, UserRow } from '../../core/api/tenant-admin.service';
 import { provideTestTransloco } from '../../testing/test-transloco';
 import { DICTIONARIES } from '../../testing/test-dictionaries';
 import { routes } from '../../app.routes';
 import { AlertDetailPage } from './alert-detail';
-import { evidenceFacts } from './alerts-model';
+import {
+  actorNameOf,
+  eventKey,
+  evidenceFacts,
+  reasonKey,
+} from './alerts-model';
 
 // P5 spec 05, S3a — detail + evidence + the quiet-hours badge, RED first.
+// S3b adds the timeline: the door's order rendered as received, actor names from
+// the users list, and reason codes spoken while free text stays as written.
 //
-// The net pins the three ways this page can lie: evidence re-read from the rule
-// instead of the stored snapshot, a quiet-hours badge that depends on the status
-// (so an ack "clears" a mute that really happened), and a badge fed by the events
-// door — which is S3b's read and must not exist here.
+// The net pins the ways this page can lie: evidence re-read from the rule instead
+// of the stored snapshot, a quiet-hours badge that depends on the status (so an
+// ack "clears" a mute that really happened), and a badge fed by the events door —
+// which is S3b's read and must not exist here.
 
 const ASSET_ID = 'a3f1c2d4-5b6e-4f70-8a91-0b2c3d4e5f60';
 const ALERT_ID = '12ac9443-3507-43a2-9bda-f5e500400b27';
+const VIEWER = 'dc8c8785-e324-4f02-a8c4-d9f274fa5605';
+const ADMIN = 'b2b7a1a0-9c1e-4c1e-9a35-8d1e0b1f2c3d';
 
 function asset(assetId: string, name: string): AssetRow {
   return { assetId, tenantId: 't1', templateId: 'tpl', name, location: null, notes: null, isActive: true };
+}
+
+function user(userId: string, email: string, displayName?: string | null): UserRow {
+  return { userId, tenantId: 't1', email, role: 'viewer', locale: 'en', displayName };
 }
 
 function alert(overrides: Partial<AlertRow> = {}): AlertRow {
@@ -48,6 +61,39 @@ function alert(overrides: Partial<AlertRow> = {}): AlertRow {
     ...overrides,
   };
 }
+
+describe('alert timeline vocabulary', () => {
+  it('names every lifecycle event the audit table can hold', () => {
+    expect(eventKey('opened')).toBe('alerts.eventOpened');
+    expect(eventKey('reopened')).toBe('alerts.eventReopened');
+    expect(eventKey('acknowledged')).toBe('alerts.eventAcknowledged');
+    expect(eventKey('resolved')).toBe('alerts.eventResolved');
+    expect(eventKey('suppressed')).toBe('alerts.eventSuppressed');
+    expect(eventKey('deduplicated')).toBe('alerts.eventDeduplicated');
+    // a future event type is shown as received, never swallowed
+    expect(eventKey('escalated')).toBeNull();
+  });
+
+  it('translates the engine reason codes and nothing else', () => {
+    expect(reasonKey('mute_window')).toBe('alerts.reasonMuteWindow');
+    expect(reasonKey('cooldown')).toBe('alerts.reasonCooldown');
+    expect(reasonKey('condition_restored')).toBe('alerts.reasonConditionRestored');
+    expect(reasonKey('device_online_restored')).toBe('alerts.reasonDeviceOnlineRestored');
+    expect(reasonKey('manual')).toBe('alerts.reasonManual');
+    // an admin's free text is history, not vocabulary: left exactly as stored
+    expect(reasonKey('compressor replaced')).toBeNull();
+    expect(reasonKey('')).toBeNull();
+    expect(reasonKey(null)).toBeNull();
+  });
+
+  it('resolves an actor by display name, then email, and admits a missing one', () => {
+    const users = [user(VIEWER, 'night@nabd.io', 'Night Shift'), user(ADMIN, 'ops@nabd.io', '  ')];
+
+    expect(actorNameOf(users, VIEWER)).toBe('Night Shift');
+    expect(actorNameOf(users, ADMIN)).toBe('ops@nabd.io');
+    expect(actorNameOf(users, 'gone-forever')).toBeNull();
+  });
+});
 
 describe('alert evidence model', () => {
   it('renders the stored thresholds as they were, and never reconstructs them', () => {
@@ -128,14 +174,25 @@ describe('AlertDetailPage', () => {
     fixture.destroy();
   });
 
-  /** The page reads its asset names once and the alert once. */
-  function load(row: AlertRow): void {
+  /**
+   * The page reads its asset names once, the alert once, then the trail and the
+   * users it names — four reads, each with its own failure.
+   */
+  function load(row: AlertRow, events: AlertEvent[] = [], users: UserRow[] = []): void {
     http
       .expectOne((request) => request.url === '/api/v1/assets')
       .flush([asset(ASSET_ID, 'Cold room')]);
     http.expectOne((request) => request.url === `/api/v1/alerts/${ALERT_ID}`).flush(row);
     fixture.detectChanges();
+    http.expectOne((request) => request.url === `/api/v1/alerts/${ALERT_ID}/events`).flush({ items: events });
+    http.expectOne((request) => request.url === '/api/v1/tenants/t1/users').flush(users);
+    fixture.detectChanges();
   }
+
+  const eventsOnScreen = (): string[] =>
+    Array.from(dom().querySelectorAll('[data-event]')).map(
+      (node) => node.getAttribute('data-event') ?? '',
+    );
 
   it('shows the evidence the alert stored, never a re-read rule', () => {
     load(alert());
@@ -236,6 +293,68 @@ describe('AlertDetailPage', () => {
     expect(dom().querySelector('a[href="/alerts"]')).not.toBeNull();
   });
 
+  it('draws the history in the door order and never re-sorts it', () => {
+    // deliberately "wrong" chronologically: the door's order is the truth
+    load(
+      alert({ status: 'resolved', resolvedAt: '2026-11-24T13:30:00Z' }),
+      [
+        { event: 'resolved', at: '2026-11-24T13:30:00Z', actorUserId: ADMIN, reason: 'condition_restored' },
+        { event: 'acknowledged', at: '2026-11-24T12:05:00Z', actorUserId: VIEWER },
+        { event: 'opened', at: '2026-11-24T11:50:00Z' },
+      ],
+      [user(VIEWER, 'night@nabd.io', 'Night Shift'), user(ADMIN, 'ops@nabd.io', 'Ops Admin')],
+    );
+
+    expect(eventsOnScreen()).toEqual(['resolved', 'acknowledged', 'opened']);
+    expect(text()).toContain('Ops Admin');
+    expect(text()).toContain('Night Shift');
+    // the code is spoken, not printed
+    expect(text()).toContain('Condition restored');
+    expect(text()).not.toContain('condition_restored');
+  });
+
+  it('leaves an admin\'s free text and an unknown code exactly as stored', () => {
+    load(alert(), [
+      { event: 'resolved', at: '2026-11-24T13:30:00Z', reason: 'compressor replaced' },
+      { event: 'escalated', at: '2026-11-24T14:00:00Z', reason: 'brand_new_code' },
+    ]);
+
+    expect(text()).toContain('compressor replaced');
+    expect(text()).toContain('brand_new_code');
+    // a future event type and an unknown code still render — never a blank row
+    expect(eventsOnScreen()).toEqual(['resolved', 'escalated']);
+  });
+
+  it('says "a user" when the actor is gone, never a blank cell', () => {
+    load(alert(), [
+      { event: 'acknowledged', at: '2026-11-24T12:05:00Z', actorUserId: 'gone-forever' },
+    ]);
+
+    expect(dom().querySelector('.alert-event-actor')?.textContent).toContain('A user');
+  });
+
+  it('says so when the history read fails, and keeps the alert on screen', () => {
+    http.expectOne((request) => request.url === '/api/v1/assets').flush([]);
+    http.expectOne((request) => request.url === `/api/v1/alerts/${ALERT_ID}`).flush(alert());
+    fixture.detectChanges();
+    http.expectOne((request) => request.url === '/api/v1/tenants/t1/users').flush([]);
+    http
+      .expectOne((request) => request.url === `/api/v1/alerts/${ALERT_ID}/events`)
+      .flush({ code: 'alerting:alert_not_found' }, { status: 404, statusText: 'Not Found' });
+    fixture.detectChanges();
+
+    expect(text()).toContain('Freezer too warm');
+    expect(text()).toContain('no longer exists');
+    expect(page.timelineProblem()?.key).toBe('errors.notFound');
+  });
+
+  it('says the trail is empty instead of drawing nothing', () => {
+    load(alert());
+
+    expect(text()).toContain('No events recorded');
+    expect(eventsOnScreen()).toEqual([]);
+  });
+
   it('shows a loading line before the answer', () => {
     expect(text()).toContain('Loading…');
     http.match(() => true);
@@ -262,6 +381,20 @@ describe('alerts detail dictionary, errors and route', () => {
     'alerts.notResolved',
     'alerts.quietHours',
     'alerts.quietHoursBody',
+    'alerts.timeline',
+    'alerts.noEvents',
+    'alerts.someUser',
+    'alerts.eventOpened',
+    'alerts.eventReopened',
+    'alerts.eventAcknowledged',
+    'alerts.eventResolved',
+    'alerts.eventSuppressed',
+    'alerts.eventDeduplicated',
+    'alerts.reasonMuteWindow',
+    'alerts.reasonCooldown',
+    'alerts.reasonConditionRestored',
+    'alerts.reasonDeviceOnlineRestored',
+    'alerts.reasonManual',
   ];
 
   it.each(keys)('%s exists in both dictionaries', (key) => {

@@ -1,6 +1,6 @@
 import { inject, Injectable } from '@angular/core';
 import { HttpClient, HttpParams } from '@angular/common/http';
-import { Observable } from 'rxjs';
+import { map, Observable } from 'rxjs';
 import { API_BASE } from './api.config';
 
 /** What the list door accepts. Nothing here is ever `all` (spec 05 S2 fact 1). */
@@ -47,6 +47,20 @@ export interface AlertRow {
 }
 
 /**
+ * One audit row of `GET /api/v1/alerts/{id}/events` (spec 05, E7). The host
+ * writes with `WhenWritingNull`, so an absent actor, reason or detail is missing,
+ * not `null`. `reason` is a code when the engine wrote it and free text when an
+ * admin resolved; the UI decides how to say each.
+ */
+export interface AlertEvent {
+  event: string;
+  at: string;
+  actorUserId?: string | null;
+  reason?: string | null;
+  detail?: unknown;
+}
+
+/**
  * The alert list door (FR-42). Filters are optional by construction: an absent
  * key is never sent, so `?status=all` cannot exist on the wire.
  */
@@ -68,5 +82,19 @@ export class AlertsApi {
   /** One alert, with the evidence it stored when it opened (`GET /{id}`). */
   get(alertId: string): Observable<AlertRow> {
     return this.http.get<AlertRow>(`${this.base}/api/v1/alerts/${alertId}`);
+  }
+
+  /**
+   * The audit trail (`GET /{id}/events`, E7), ascending in the door's documented
+   * order — the client renders what it receives and never re-sorts a history.
+   * Lifecycle events by default; `includeEvaluation` adds suppressed/deduplicated.
+   */
+  events(alertId: string, includeEvaluation = false): Observable<AlertEvent[]> {
+    let params = new HttpParams();
+    if (includeEvaluation) params = params.set('includeEvaluation', 'true');
+
+    return this.http
+      .get<{ items: AlertEvent[] }>(`${this.base}/api/v1/alerts/${alertId}/events`, { params })
+      .pipe(map((response) => response.items ?? []));
   }
 }

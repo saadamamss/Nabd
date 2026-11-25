@@ -3,9 +3,18 @@ import { ActivatedRoute, RouterLink } from '@angular/router';
 import { Subscription } from 'rxjs';
 import { TranslocoPipe, TranslocoService } from '@jsverse/transloco';
 import { ApiProblem, describeApiError } from '../../core/api/api-error';
-import { AlertRow, AlertsApi } from '../../core/api/alerts.service';
-import { AssetRow, TenantAdminApi } from '../../core/api/tenant-admin.service';
-import { assetNameOf, evidenceFacts, severityKey, statusKey, titleFor } from './alerts-model';
+import { AlertEvent, AlertRow, AlertsApi } from '../../core/api/alerts.service';
+import { AssetRow, TenantAdminApi, UserRow } from '../../core/api/tenant-admin.service';
+import {
+  actorNameOf,
+  assetNameOf,
+  eventKey,
+  evidenceFacts,
+  reasonKey,
+  severityKey,
+  statusKey,
+  titleFor,
+} from './alerts-model';
 import { QuietHoursBadge } from './quiet-hours-badge';
 
 /**
@@ -15,7 +24,11 @@ import { QuietHoursBadge } from './quiet-hours-badge';
  * `AlertDetail` copied when the rule crossed (the rule is never re-read, so a
  * later PATCH cannot rewrite history), and the quiet-hours badge is the row's own
  * `QuietHoursSuppressed` — a state of its own, not a decoration of the status.
- * The timeline and the actions are S3b/S4 and deliberately absent.
+ *
+ * S3b adds the timeline: the audit trail as the door returns it (never re-sorted),
+ * actor names resolved from the users list, and reason codes spoken in the reader's
+ * language while free text stays exactly as the admin wrote it (R3). The actions
+ * are S4 and deliberately absent.
  */
 @Component({
   selector: 'app-alert-detail-page',
@@ -99,6 +112,52 @@ import { QuietHoursBadge } from './quiet-hours-badge';
         </section>
 
         <section class="ui-panel">
+          <h2 class="alert-h2">{{ 'alerts.timeline' | transloco }}</h2>
+
+          @if (timelineProblem(); as p) {
+            <p class="ui-note is-error">
+              {{ p.key | transloco }}
+              @if (p.code) {
+                <code>{{ p.code }}</code>
+              }
+            </p>
+          } @else if (eventsLoading()) {
+            <p class="ui-hint">{{ 'common.loading' | transloco }}</p>
+          } @else if (events().length) {
+            <ol class="alert-timeline">
+              @for (event of events(); track $index) {
+                <li class="alert-event" [attr.data-event]="event.event">
+                  <span class="alert-event-name">
+                    @if (eventKey(event.event); as key) {
+                      {{ key | transloco }}
+                    } @else {
+                      {{ event.event }}
+                    }
+                  </span>
+                  <span class="alert-event-time">{{ absolute(event.at) }}</span>
+                  @if (event.actorUserId) {
+                    <span class="alert-event-actor">
+                      {{ actorName(event.actorUserId) ?? ('alerts.someUser' | transloco) }}
+                    </span>
+                  }
+                  @if (event.reason) {
+                    <span class="alert-event-reason" dir="auto">
+                      @if (reasonKey(event.reason); as key) {
+                        {{ key | transloco }}
+                      } @else {
+                        {{ event.reason }}
+                      }
+                    </span>
+                  }
+                </li>
+              }
+            </ol>
+          } @else {
+            <p class="ui-hint">{{ 'alerts.noEvents' | transloco }}</p>
+          }
+        </section>
+
+        <section class="ui-panel">
           <h2 class="alert-h2">{{ 'alerts.state' | transloco }}</h2>
           <div class="ui-grid">
             <div class="alert-fact">
@@ -163,6 +222,40 @@ import { QuietHoursBadge } from './quiet-hours-badge';
       font-variant-numeric: tabular-nums;
       overflow-wrap: anywhere;
     }
+
+    .alert-timeline {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .alert-event {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: baseline;
+      gap: 0.5rem;
+      border-inline-start: 2px solid var(--app-border);
+      padding-inline-start: 0.6rem;
+    }
+
+    .alert-event-name {
+      font-weight: 600;
+    }
+
+    .alert-event-time {
+      color: var(--app-text-muted);
+      font-size: 0.875rem;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .alert-event-actor,
+    .alert-event-reason {
+      font-size: 0.875rem;
+      overflow-wrap: anywhere;
+    }
   `,
 })
 export class AlertDetailPage implements OnInit, OnDestroy {
@@ -175,6 +268,13 @@ export class AlertDetailPage implements OnInit, OnDestroy {
   readonly assets = signal<AssetRow[]>([]);
   readonly loading = signal(true);
   readonly problem = signal<ApiProblem | null>(null);
+
+  /** The audit trail, in the door's order — rendered, never re-sorted. */
+  readonly events = signal<AlertEvent[]>([]);
+  readonly eventsLoading = signal(false);
+  readonly timelineProblem = signal<ApiProblem | null>(null);
+  /** Names decorate the timeline; a failed users read must not hide the trail. */
+  readonly users = signal<UserRow[]>([]);
 
   /** Both titles ship with the alert; the locale picks one and shows the other. */
   readonly title = computed(() => {
@@ -195,6 +295,7 @@ export class AlertDetailPage implements OnInit, OnDestroy {
   readonly facts = computed(() => evidenceFacts(this.alert()?.detail, this.transloco.activeLang()));
 
   private paramsSub: Subscription | null = null;
+  private usersFor = '';
 
   ngOnInit(): void {
     // A name decorates the header only; a failure must not hide the alert itself.
@@ -216,11 +317,15 @@ export class AlertDetailPage implements OnInit, OnDestroy {
   load(alertId: string): void {
     this.loading.set(true);
     this.problem.set(null);
+    this.events.set([]);
+    this.timelineProblem.set(null);
 
     this.api.get(alertId).subscribe({
       next: (row) => {
         this.alert.set(row);
         this.loading.set(false);
+        this.loadEvents(alertId);
+        this.loadUsers(row.tenantId);
       },
       error: (error: unknown) => {
         // A gone or cross-tenant alert is 404 by the P1 law; say so, keep the way back.
@@ -228,6 +333,37 @@ export class AlertDetailPage implements OnInit, OnDestroy {
         this.problem.set(describeApiError(error));
         this.loading.set(false);
       },
+    });
+  }
+
+  /**
+   * The trail is its own read: a failure in it is said in the timeline section
+   * and never takes the alert down with it (that evidence is already on screen).
+   */
+  private loadEvents(alertId: string): void {
+    this.eventsLoading.set(true);
+
+    this.api.events(alertId).subscribe({
+      next: (events) => {
+        this.events.set(events);
+        this.eventsLoading.set(false);
+      },
+      error: (error: unknown) => {
+        this.events.set([]);
+        this.timelineProblem.set(describeApiError(error));
+        this.eventsLoading.set(false);
+      },
+    });
+  }
+
+  /** One users read per tenant; the alert's own tenant is the caller's (RLS). */
+  private loadUsers(tenantId: string): void {
+    if (!tenantId || this.usersFor === tenantId) return;
+    this.usersFor = tenantId;
+
+    this.admin.users(tenantId).subscribe({
+      next: (users) => this.users.set(users),
+      error: () => this.users.set([]),
     });
   }
 
@@ -241,6 +377,18 @@ export class AlertDetailPage implements OnInit, OnDestroy {
 
   assetName(assetId: string): string | null {
     return assetNameOf(this.assets(), assetId);
+  }
+
+  eventKey(event: string): string | null {
+    return eventKey(event);
+  }
+
+  reasonKey(reason: string): string | null {
+    return reasonKey(reason);
+  }
+
+  actorName(actorUserId: string): string | null {
+    return actorNameOf(this.users(), actorUserId);
   }
 
   absolute(iso: string): string {

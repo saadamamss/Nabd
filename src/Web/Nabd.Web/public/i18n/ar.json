@@ -311,7 +311,21 @@
     "notAcknowledged": "غير مؤكَّد",
     "notResolved": "لم يُحلّ بعد",
     "quietHours": "لم يُرسَل إشعار",
-    "quietHoursBody": "وصل هذا التنبيه خلال فترة الصمت، فلم يصل إشعار إلى أحد. لكنه تنبيه قائم."
+    "quietHoursBody": "وصل هذا التنبيه خلال فترة الصمت، فلم يصل إشعار إلى أحد. لكنه تنبيه قائم.",
+    "timeline": "السجل",
+    "noEvents": "لا أحداث مسجّلة لهذا التنبيه بعد.",
+    "someUser": "مستخدم",
+    "eventOpened": "فُتح",
+    "eventReopened": "أُعيد فتحه",
+    "eventAcknowledged": "أُكِّد",
+    "eventResolved": "حُلّ",
+    "eventSuppressed": "كُتم",
+    "eventDeduplicated": "دُمج",
+    "reasonMuteWindow": "فترة الصمت",
+    "reasonCooldown": "فترة التهدئة",
+    "reasonConditionRestored": "زوال السبب",
+    "reasonDeviceOnlineRestored": "الجهاز عاد للاتصال",
+    "reasonManual": "حُلّ يدويًا"
   },
   "pages": {
     "assets": {

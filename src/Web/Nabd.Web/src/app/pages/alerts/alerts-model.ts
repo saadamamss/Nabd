@@ -215,6 +215,69 @@ export function evidenceFacts(
 }
 
 /**
+ * P5 spec 05, S3b — the timeline's vocabulary, pure and testable.
+ *
+ * A stored reason is a **code**, not a sentence (R3): `condition_restored` is
+ * engine vocabulary and would leak into both locales if printed verbatim, while
+ * an admin's resolve text is the opposite — it must never be translated. So the
+ * known codes get a dictionary key and everything else renders exactly as stored:
+ * free text stays verbatim, and a future code can never render blank.
+ */
+
+/** Known lifecycle events get a dictionary key; an unknown event is shown as received. */
+export function eventKey(event: string): string | null {
+  switch (event) {
+    case 'opened':
+      return 'alerts.eventOpened';
+    case 'reopened':
+      return 'alerts.eventReopened';
+    case 'acknowledged':
+      return 'alerts.eventAcknowledged';
+    case 'resolved':
+      return 'alerts.eventResolved';
+    case 'suppressed':
+      return 'alerts.eventSuppressed';
+    case 'deduplicated':
+      return 'alerts.eventDeduplicated';
+    default:
+      return null;
+  }
+}
+
+/** The engine's reason codes, in both locales; anything else is shown as stored. */
+export function reasonKey(reason: string | null | undefined): string | null {
+  switch (reason) {
+    case 'mute_window':
+      return 'alerts.reasonMuteWindow';
+    case 'cooldown':
+      return 'alerts.reasonCooldown';
+    case 'condition_restored':
+      return 'alerts.reasonConditionRestored';
+    case 'device_online_restored':
+      return 'alerts.reasonDeviceOnlineRestored';
+    case 'manual':
+      return 'alerts.reasonManual';
+    default:
+      return null;
+  }
+}
+
+/**
+ * The actor's name from the users list (all roles can read it). `null` when the
+ * id no longer resolves — the caller says "a user" instead of a blank cell.
+ * A display name is the human answer; the email is the fallback that always exists.
+ */
+export function actorNameOf(
+  users: readonly { userId: string; email: string; displayName?: string | null }[],
+  actorUserId: string,
+): string | null {
+  const user = users.find((candidate) => candidate.userId === actorUserId);
+  if (!user) return null;
+
+  return user.displayName?.trim() || user.email;
+}
+
+/**
  * `AlertSnapshot` carries `AssetId` only (no invented server field), so the name
  * comes from the already-loaded assets list. A missing row is said out loud.
  */
