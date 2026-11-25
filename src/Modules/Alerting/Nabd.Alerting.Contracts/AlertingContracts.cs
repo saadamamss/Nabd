@@ -1,5 +1,6 @@
 namespace Nabd.Alerting.Contracts;
 
+using System.Text.Json;
 using Nabd.Identity.Contracts;
 using Nabd.Rules.Contracts;
 using Nabd.SharedKernel;
@@ -119,7 +120,23 @@ public sealed record AlertSnapshot(
     Guid? AcknowledgedBy,
     string TitleEn,
     string TitleAr,
-    AlertDetail Detail);
+    AlertDetail Detail,
+    /// <summary>
+    /// P5 spec 05 (E9): this episode opened inside a quiet-hours window, so the row
+    /// exists but nobody was notified. A ROW fact computed in the list query — never
+    /// an events read per row — and it clears by construction when a reopen rewrites
+    /// `opened_at` (the `suppressed` event then predates the new episode).
+    /// </summary>
+    bool QuietHoursSuppressed = false);
+
+/// <summary>One audit row (P5 spec 05, E7): the timeline's only truthful source.</summary>
+public sealed record AlertEventDto(
+    string Event,
+    DateTimeOffset At,
+    Guid? ActorUserId = null,
+    string? Reason = null,
+    /// <summary>The event's evidence (JSONB at rest), passed through as JSON, not a string.</summary>
+    JsonElement? Detail = null);
 
 /// <summary>List filter (FR-42's future dashboard asks exactly these three + a cap).</summary>
 public sealed record AlertFilter(
@@ -148,6 +165,15 @@ public interface IAlerting
 
     Task<Result<AlertSnapshot>> GetAsync(
         CallerContext acting, Guid alertId, CancellationToken ct = default);
+
+    /// <summary>
+    /// P5 spec 05 (E7/E8): the alert's audit trail, ascending, newest 500. Lifecycle
+    /// events only unless `includeEvaluation` asks for `suppressed`/`deduplicated`
+    /// too. Unknown or foreign alert → `AlertNotFound` (404-hide).
+    /// </summary>
+    Task<Result<IReadOnlyList<AlertEventDto>>> ListEventsAsync(
+        CallerContext acting, Guid alertId, bool includeEvaluation = false,
+        CancellationToken ct = default);
 
     /// <summary>Viewer+ (plan/06 §5.1). Idempotent: a second ACK logs nothing new.</summary>
     Task<Result<AlertSnapshot>> AcknowledgeAsync(

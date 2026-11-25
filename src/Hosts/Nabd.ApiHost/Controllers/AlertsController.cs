@@ -37,6 +37,20 @@ public sealed class AlertsController(IAlerting alerts) : ControllerBase
         return result.IsSuccess ? Ok(result.Value) : Translate(result.Error!);
     }
 
+    // P5 spec 05 (E7/E8): the alert's audit trail. Lifecycle events by default;
+    // `includeEvaluation=true` adds suppressed/deduplicated. `{ items }` per the spec.
+    [Viewer(Operations.AlertRead)]
+    [HttpGet("api/v1/alerts/{alertId:guid}/events")]
+    public async Task<IActionResult> Events(
+        Guid alertId, [FromQuery] bool? includeEvaluation, CancellationToken ct)
+    {
+        var caller = Caller.FromUser(User);
+        if (caller is null) return Unauthorized();
+
+        var result = await alerts.ListEventsAsync(caller, alertId, includeEvaluation ?? false, ct);
+        return result.IsSuccess ? Ok(new { items = result.Value }) : Translate(result.Error!);
+    }
+
     // plan/06 §5.1: Viewer+ acknowledges (the first responder is often not an admin).
     [Viewer(Operations.AlertAck)]
     [HttpPost("api/v1/alerts/{alertId:guid}/ack")]

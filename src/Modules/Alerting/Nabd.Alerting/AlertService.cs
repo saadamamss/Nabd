@@ -29,7 +29,14 @@ public sealed class AlertService(AlertingDb db) : IAlerting
     private const string Columns = """
         id, tenant_id, asset_id, rule_id, type, severity, status,
         opened_at, resolved_at, acknowledged_at, acknowledged_by,
-        title ->> 'en' AS title_en, title ->> 'ar' AS title_ar, detail
+        title ->> 'en' AS title_en, title ->> 'ar' AS title_ar, detail,
+        EXISTS (
+            SELECT 1 FROM alerting.alert_events e
+             WHERE e.alert_id = alerts.id
+               AND e.event = 'suppressed'
+               AND e.reason = 'mute_window'
+               AND e.at >= alerts.opened_at
+        ) AS quiet_hours_suppressed
         """;
 
     // ===== the doors (IAlerting) ============================================
@@ -104,6 +111,81 @@ public sealed class AlertService(AlertingDb db) : IAlerting
             return row is null
                 ? Result<AlertSnapshot>.Failure(AlertErrors.AlertNotFound)   // 404-hide: no existence hints
                 : Result<AlertSnapshot>.Success(row);
+        }
+        catch
+        {
+            await tx.RollbackAsync(ct);
+            throw;
+        }
+        finally
+        {
+            await conn.DisposeAsync();
+        }
+    }
+
+    public async Task<Result<IReadOnlyList<AlertEventDto>>> ListEventsAsync(
+        CallerContext acting, Guid alertId, bool includeEvaluation = false,
+        CancellationToken ct = default)
+    {
+        var forbidden = PermissionMatrix.Assert(acting, Operations.AlertRead, acting.TenantId);
+        if (forbidden is not null)
+            return Result<IReadOnlyList<AlertEventDto>>.Failure(forbidden);
+
+        var (conn, tx) = await db.OpenTenantScopeAsync(acting.TenantId, ct);
+        try
+        {
+            // 404-hide: an unknown id and a foreign tenant's id are the same answer.
+            bool visible;
+            await using (var exists = new NpgsqlCommand(
+                "SELECT 1 FROM alerting.alerts WHERE id = @id", conn, tx))
+            {
+                exists.Parameters.AddWithValue("id", alertId);
+                visible = await exists.ExecuteScalarAsync(ct) is not null;
+            }
+            if (!visible)
+            {
+                await tx.CommitAsync(ct);
+                return Result<IReadOnlyList<AlertEventDto>>.Failure(AlertErrors.AlertNotFound);
+            }
+
+            var rows = new List<AlertEventDto>();
+            await using (var cmd = new NpgsqlCommand("""
+                SELECT event, at, actor_user_id, reason, detail::text
+                  FROM (
+                    SELECT id, event, at, actor_user_id, reason, detail
+                      FROM alerting.alert_events
+                     WHERE alert_id = @id
+                       AND (@all::boolean OR event NOT IN ('suppressed', 'deduplicated'))
+                     -- newest 500 first (E8), then flipped to reading order below
+                     ORDER BY at DESC,
+                              array_position(ARRAY['opened','reopened','deduplicated','suppressed','acknowledged','resolved'], event) DESC,
+                              id DESC
+                     LIMIT 500
+                  ) AS newest
+                 -- E7/R2: `suppressed` shares its instant with the opened/reopened it
+                 -- belongs to, and `id` is random — the rank + id make the order exact.
+                 ORDER BY at,
+                          array_position(ARRAY['opened','reopened','deduplicated','suppressed','acknowledged','resolved'], event),
+                          id
+                """, conn, tx))
+            {
+                cmd.Parameters.AddWithValue("id", alertId);
+                cmd.Parameters.AddWithValue("all", includeEvaluation);
+                await using var reader = await cmd.ExecuteReaderAsync(ct);
+                while (await reader.ReadAsync(ct))
+                {
+                    rows.Add(new AlertEventDto(
+                        reader.GetString(0),
+                        reader.GetFieldValue<DateTimeOffset>(1),
+                        reader.IsDBNull(2) ? null : reader.GetGuid(2),
+                        reader.IsDBNull(3) ? null : reader.GetString(3),
+                        reader.IsDBNull(4)
+                            ? null
+                            : JsonSerializer.Deserialize<JsonElement>(reader.GetString(4))));
+                }
+            }
+            await tx.CommitAsync(ct);
+            return Result<IReadOnlyList<AlertEventDto>>.Success(rows);
         }
         catch
         {
@@ -324,7 +406,9 @@ public sealed class AlertService(AlertingDb db) : IAlerting
                         "suppressed", null, "mute_window", detailJson, at, ct);
                     await tx.CommitAsync(ct);
                     return Result<AlertRaiseResult>.Success(
-                        new AlertRaiseResult(AlertRaiseOutcome.Muted, snapshot));
+                        new AlertRaiseResult(
+                            AlertRaiseOutcome.Muted,
+                            snapshot with { QuietHoursSuppressed = true }));
                 }
 
                 await tx.CommitAsync(ct);
@@ -397,6 +481,7 @@ public sealed class AlertService(AlertingDb db) : IAlerting
                     TitleEn = titleEn,
                     TitleAr = titleAr,
                     Detail = detail,
+                    QuietHoursSuppressed = false,   // the reopen starts a NEW episode
                 };
 
             // spec 06 (D6e): a window silences the fan-out — never the state machine.
@@ -404,9 +489,11 @@ public sealed class AlertService(AlertingDb db) : IAlerting
             {
                 await InsertEventAsync(conn, tx, rule.TenantId, existing.AlertId,
                     "suppressed", null, "mute_window", detailJson, at, ct);
-                await tx.CommitAsync(ct);
+                                    await tx.CommitAsync(ct);
                 return Result<AlertRaiseResult>.Success(
-                    new AlertRaiseResult(AlertRaiseOutcome.Muted, reopened));
+                    new AlertRaiseResult(
+                        AlertRaiseOutcome.Muted,
+                        reopened with { QuietHoursSuppressed = true }));
             }
 
             await tx.CommitAsync(ct);
@@ -603,7 +690,8 @@ public sealed class AlertService(AlertingDb db) : IAlerting
         r.IsDBNull(10) ? null : r.GetGuid(10),
         r.GetString(11), r.GetString(12),
         JsonSerializer.Deserialize<AlertDetail>(r.GetString(13), Json)
-            ?? throw new InvalidOperationException("alert detail JSONB is empty — the row is corrupt"));
+            ?? throw new InvalidOperationException("alert detail JSONB is empty — the row is corrupt"),
+        r.GetBoolean(14));
 
     /// <summary>plan/06 §5.2: cooldown_minutes, and critical cools at half (§6/§8).</summary>
     private static TimeSpan CooldownOf(RuleSnapshot rule) =>
