@@ -32,6 +32,12 @@ const CODE_KEYS: Readonly<Record<string, string>> = {
   'rules:mute_window_overlap': 'errors.muteWindowOverlap',
   'history:invalid_range': 'errors.historyRange',
   'history:unknown_channel': 'errors.historyChannel',
+  // spec 05: the alert doors' refusals (AlertErrors in the Alerting room)
+  'alerting:alert_not_found': 'errors.notFound',
+  'alerting:asset_not_found': 'errors.notFound',
+  'alerting:invalid_filter': 'errors.alertFilter',
+  'alerting:invalid_status': 'errors.alertStatus',
+  'alerting:invalid_reason': 'errors.alertReason',
 };
 
 /** Every code this UI knows how to translate (the parity test enumerates it). */

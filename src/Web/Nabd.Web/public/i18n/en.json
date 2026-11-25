@@ -266,6 +266,35 @@
     "tableNote": "Showing the newest {{shown}} of {{total}} buckets.",
     "back": "Back to assets"
   },
+  "alerts": {
+    "title": "Alerts",
+    "body": "Every alert the engine raised, newest first. Open and acknowledged alerts are still problems; resolved ones are history.",
+    "filterStatus": "Status",
+    "filterSeverity": "Severity",
+    "filterAsset": "Asset",
+    "filterLimit": "Rows",
+    "filterAll": "All statuses",
+    "filterAllSeverities": "All severities",
+    "filterAllAssets": "All assets",
+    "statusOpen": "Open",
+    "statusAcknowledged": "Acknowledged",
+    "statusResolved": "Resolved",
+    "severityInfo": "Info",
+    "severityWarn": "Warning",
+    "severityCritical": "Critical",
+    "colSeverity": "Severity",
+    "colStatus": "Status",
+    "colAlert": "Alert",
+    "colAsset": "Asset",
+    "colOpened": "Opened",
+    "colAcknowledged": "Acknowledged",
+    "empty": "No alerts yet. They appear here the moment a rule fires.",
+    "emptyFiltered": "No alerts match these filters.",
+    "reset": "Clear filters",
+    "showingLatest": "Showing the latest {{count}} of up to {{limit}}.",
+    "assetUnknown": "Asset outside this list",
+    "none": "—"
+  },
   "pages": {
     "assets": {
       "title": "Assets",
@@ -306,6 +335,9 @@
     "muteWindowOverlap": "Two quiet windows overlap.",
     "historyRange": "Choose a valid range: “from” before “to”, within 366 days.",
     "historyChannel": "That channel does not belong to this asset.",
+    "alertFilter": "That filter is not valid.",
+    "alertStatus": "This alert is already resolved.",
+    "alertReason": "The reason must be 200 characters or fewer.",
     "deviceRevoked": "This device is revoked. A revoked token cannot be restored — recovery is a new device."
   },
   "toast": {

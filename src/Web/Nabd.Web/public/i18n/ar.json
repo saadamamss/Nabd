@@ -266,6 +266,35 @@
     "tableNote": "تُعرض أحدث {{shown}} من {{total}} دلوًا.",
     "back": "رجوع إلى الأصول"
   },
+  "alerts": {
+    "title": "التنبيهات",
+    "body": "كل تنبيه رفعه المحرّك، الأحدث أولًا. المفتوح والمؤكَّد يبقيان مشكلة؛ والمحلول جزء من السجل.",
+    "filterStatus": "الحالة",
+    "filterSeverity": "الخطورة",
+    "filterAsset": "الأصل",
+    "filterLimit": "الصفوف",
+    "filterAll": "كل الحالات",
+    "filterAllSeverities": "كل درجات الخطورة",
+    "filterAllAssets": "كل الأصول",
+    "statusOpen": "مفتوح",
+    "statusAcknowledged": "مؤكَّد",
+    "statusResolved": "محلول",
+    "severityInfo": "معلومة",
+    "severityWarn": "تحذير",
+    "severityCritical": "حرِج",
+    "colSeverity": "الخطورة",
+    "colStatus": "الحالة",
+    "colAlert": "التنبيه",
+    "colAsset": "الأصل",
+    "colOpened": "فُتح",
+    "colAcknowledged": "أُكِّد",
+    "empty": "لا تنبيهات بعد. تظهر هنا لحظة إطلاق قاعدة.",
+    "emptyFiltered": "لا تنبيهات تطابق هذه المرشّحات.",
+    "reset": "مسح المرشّحات",
+    "showingLatest": "تُعرض أحدث {{count}} من {{limit}} كحد أقصى.",
+    "assetUnknown": "أصل خارج هذه القائمة",
+    "none": "—"
+  },
   "pages": {
     "assets": {
       "title": "الأصول",
@@ -306,6 +335,9 @@
     "muteWindowOverlap": "نافذتا هدوء متداخلتان.",
     "historyRange": "اختر مدى صالحًا: «من» قبل «إلى»، وخلال 366 يومًا كحد أقصى.",
     "historyChannel": "هذه القناة لا تنتمي إلى هذا الأصل.",
+    "alertFilter": "هذا المرشّح غير صالح.",
+    "alertStatus": "هذا التنبيه محلول بالفعل.",
+    "alertReason": "السبب يجب ألا يتجاوز ٢٠٠ حرف.",
     "deviceRevoked": "هذا الجهاز ملغى. لا يمكن إعادة رمز ملغى — الاستعادة تكون بجهاز جديد."
   },
   "toast": {
