@@ -108,10 +108,4 @@ public sealed class PostgresReadingsStore(TelemetryStoreDb db, int batchSize = 5
     /// </summary>
     internal static bool IsDeterministicSqlState(string sqlState) =>
         sqlState.StartsWith("22", StringComparison.Ordinal) || sqlState == "23514";
-
-    public Task<IReadOnlyList<ReadingValueDto>> GetHistoryAsync(HistoryQuery query, CancellationToken ct = default)
-    {
-        // History reads are a later spec — the write path is spec 04's scope.
-        throw new NotImplementedException("History reads are a later spec.");
-    }
 }

@@ -61,6 +61,7 @@ builder.Services.AddSingleton<IAssetCatalog, AssetCatalog>();
 // The status read model (0028) serves both the door (caller lane, walled) and the
 // hub's post-NOTIFY re-read (system lane, tenant from the committed row).
 builder.Services.AddSingleton<IAssetStatusReader, AssetStatusReader>();
+builder.Services.AddSingleton<IAssetHistoryReader, AssetHistoryReader>();   // P5 spec 04 (0029)
 // SignalR: one hub, one broadcaster behind the Realtime contract.
 builder.Services.AddSignalR();
 builder.Services.AddSingleton<IRealtimeBroadcaster, SignalRRealtimeBroadcaster>();

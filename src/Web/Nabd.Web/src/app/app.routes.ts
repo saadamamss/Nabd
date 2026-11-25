@@ -23,6 +23,12 @@ export const routes: Routes = [
       { path: 'users', component: UsersPage },
       { path: 'assets', component: AssetsPage },
       { path: 'assets/:assetId/devices', component: DevicesPage },
+      // P5 spec 04: the chart library must not enter the initial bundle (C9).
+      {
+        path: 'assets/:assetId/history',
+        loadComponent: () =>
+          import('./pages/asset-history/asset-history').then((m) => m.AssetHistoryPage),
+      },
       { path: 'devices/:deviceId/rules', component: RulesPage },
       { path: 'alerts', component: StubPage, data: { page: 'alerts' } },
       { path: 'settings', component: StubPage, data: { page: 'settings' } },

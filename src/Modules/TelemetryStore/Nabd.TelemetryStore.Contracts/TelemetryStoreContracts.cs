@@ -5,22 +5,16 @@ public sealed record ReadingBatchDto(Guid TenantId, Guid DeviceId, IReadOnlyList
 /// <summary>ReceivedAtUtc rides per reading: the store's received_at column is NOT NULL (0003), and the pipeline's stage 5 stamps it on every normalized reading.</summary>
 public sealed record ReadingDto(string ChannelKey, DateTimeOffset TimeUtc, double Value, long Seq, DateTimeOffset ReceivedAtUtc);
 
-public sealed record HistoryQuery(Guid TenantId, Guid DeviceId, DateTimeOffset FromUtc, DateTimeOffset ToUtc);
-
-public sealed record ReadingValueDto(string ChannelKey, DateTimeOffset TimeUtc, double Value);
-
 /// <summary>
 /// The TelemetryStore room's inbound port (03 §3 "offers to others"):
-/// deterministic writes (idempotent — 04 §6 unique key) and history reads for dashboards.
-/// Implementation lives behind the room wall (Nabd.TelemetryStore impl).
+/// deterministic writes only (FR-23, NFR-04). History reads left in P5 spec 04:
+/// they live in the Assets room over 0029's aggregates, never over a bare cagg.
 /// </summary>
 public interface IReadingsStore
 {
     /// <summary>Idempotent store: INSERT ... ON CONFLICT DO NOTHING on (device_id, channel_key, time, seq) (FR-23); ack only after commit (NFR-04).</summary>
     Task StoreBatchAsync(ReadingBatchDto batch, CancellationToken ct = default);
 
-    Task<IReadOnlyList<ReadingValueDto>> GetHistoryAsync(HistoryQuery query, CancellationToken ct = default);
-    
     /// <summary>
     /// The flush path's store port (P4 spec 01, Move C): ONE multi-row INSERT
     /// per chunk across ALL devices and tenants of a flush (parallel unnest

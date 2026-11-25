@@ -194,6 +194,9 @@ import { SelectComponent, type SelectOption } from '../../core/ui/select';
                   <td>{{ row.location || ('assets.none' | transloco) }}</td>
                   <td>
                     <div class="ui-actions">
+                      <a class="ui-btn is-small" [routerLink]="['/assets', row.assetId, 'history']">
+                        {{ 'assets.openHistory' | transloco }}
+                      </a>
                       <a class="ui-btn is-small" [routerLink]="['/assets', row.assetId, 'devices']">
                         {{ 'assets.openDevices' | transloco }}
                       </a>
