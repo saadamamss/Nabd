@@ -12,6 +12,8 @@ public static class Policies
     public const string TenantAdmin = "tenant_admin";
     public const string PlatformAdmin = "platform_admin";
     public const string Internal = "internal";
+    /// <summary>P5 spec 03: an authenticated token that also names its tenant.</summary>
+    public const string HubTenant = "hub_tenant";
 }
 
 // P1 spec 04 — THE policy registry (one definition, law #27): Program registers
@@ -49,6 +51,14 @@ public static class PolicyBook
 
         // the internal wall: a requirement, not a role — the handler decides
         options.AddPolicy(Policies.Internal, p => p.AddRequirements(new InternalRequirement()));
+
+        // P5 spec 03 (B6): the dashboard hub's tenant group is built from `tid`.
+        // Refusing a tid-less token AT THE HANDSHAKE (401/403) is honest: the
+        // client's auth lane can pause after one refresh, where a connected-then-
+        // aborted socket looked like a network close and retried forever.
+        options.AddPolicy(Policies.HubTenant, p => p
+            .RequireAuthenticatedUser()
+            .RequireClaim("tid"));
     }
 }
 

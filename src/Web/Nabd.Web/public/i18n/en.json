@@ -207,11 +207,33 @@
     "settings": "Settings",
     "platform": "Platform"
   },
+  "dashboard": {
+    "title": "Live status",
+    "body": "Every asset’s current state, derived by the server from live alerts (open or acknowledged) and last seen. The push is a hint; the snapshot is the truth.",
+    "live": "Live",
+    "connecting": "Connecting…",
+    "reconnecting": "Reconnecting — showing the last snapshot",
+    "paused": "Live updates paused — sign in again",
+    "liveHint": "Pushed from the server. A dropped connection reconnects and re-syncs.",
+    "filterAll": "All assets",
+    "filterProblems": "Problems only",
+    "statusHealthy": "Healthy",
+    "statusWarning": "Warning",
+    "statusAlert": "Alert",
+    "statusOffline": "Offline",
+    "statusUnknown": "Unknown",
+    "since": "since {{time}}",
+    "lastSeenJustNow": "seen just now",
+    "lastSeenMinutes": "seen {{minutes}} min ago",
+    "lastSeenHours": "seen {{hours}} h ago",
+    "lastSeenDays": "seen {{days}} d ago",
+    "neverSeen": "no readings yet",
+    "openAlert": "Open alert",
+    "empty": "No assets yet. Create one to see its live state.",
+    "noProblems": "No problems right now.",
+    "summary": "{{healthy}} healthy · {{warning}} warning · {{alert}} alert · {{offline}} offline"
+  },
   "pages": {
-    "overview": {
-      "title": "Overview",
-      "body": "Live status and the newest alerts arrive in a later step."
-    },
     "assets": {
       "title": "Assets",
       "body": "The asset list arrives in a later step."

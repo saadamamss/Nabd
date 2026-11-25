@@ -8,6 +8,7 @@ import { UsersPage } from './pages/users/users';
 import { AssetsPage } from './pages/assets/assets';
 import { DevicesPage } from './pages/devices/devices';
 import { RulesPage } from './pages/rules/rules';
+import { DashboardPage } from './pages/dashboard/dashboard';
 
 export const routes: Routes = [
   { path: 'login', component: LoginPage },
@@ -17,7 +18,8 @@ export const routes: Routes = [
     canActivate: [authGuard],
     children: [
       { path: '', pathMatch: 'full', redirectTo: 'overview' },
-      { path: 'overview', component: StubPage, data: { page: 'overview' } },
+      // P5 spec 03: the overview IS the live dashboard (FR-40).
+      { path: 'overview', component: DashboardPage },
       { path: 'users', component: UsersPage },
       { path: 'assets', component: AssetsPage },
       { path: 'assets/:assetId/devices', component: DevicesPage },

@@ -25,6 +25,23 @@ public static class JwtWall
     {
         options.MapInboundClaims = false;
         options.TokenValidationParameters = Parameters();
+
+        // P5 spec 03 (B9): a browser cannot set an Authorization header on the
+        // WebSocket handshake, so SignalR's accessTokenFactory delivers the token
+        // as `?access_token=`. Accept it ONLY on /hubs paths — no ordinary API
+        // route gains a token-in-URL surface (the token's 15-minute life is the
+        // second half of the mitigation; ApiHost never logs hub query strings).
+        options.Events = new Microsoft.AspNetCore.Authentication.JwtBearer.JwtBearerEvents
+        {
+            OnMessageReceived = context =>
+            {
+                var token = context.Request.Query["access_token"];
+                if (!string.IsNullOrEmpty(token)
+                    && context.HttpContext.Request.Path.StartsWithSegments("/hubs"))
+                    context.Token = token;
+                return Task.CompletedTask;
+            },
+        };
     }
 
     /// <summary>Signature/issuer/audience/expire-time all fail-shut.
