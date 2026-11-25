@@ -10,7 +10,7 @@ public sealed record UpdateAssetJson(string? Name, string? Location, string? Not
 
 [ApiController]
 [Route("api/v1/assets")]
-public sealed class AssetsController(IAssetCatalog assets) : ControllerBase
+public sealed class AssetsController(IAssetCatalog assets, IAssetStatusReader statuses) : ControllerBase
 {
     [TenantAdmin(Operations.AssetCreate)]
     [HttpPost]
@@ -62,6 +62,25 @@ public sealed class AssetsController(IAssetCatalog assets) : ControllerBase
         var request = new UpdateAssetRequest(caller.TenantId, assetId, body.Name, body.Location, body.Notes);
 
         var result = await assets.UpdateAssetAsync(caller, request, ct);
+
+        return result.IsSuccess ? Ok(result.Value) : Translate(result.Error!);
+    }
+
+    /// <summary>
+    /// P5 spec 03 (FR-40): one snapshot for the whole dashboard grid. The tenant is
+    /// ALWAYS the caller's token tenant — the door accepts no tenant argument at all
+    /// (a guessed id cannot even be expressed). The `{assetId:guid}` route below
+    /// cannot shadow `status` (the guid constraint), so the two coexist.
+    /// </summary>
+    [Viewer(Operations.AssetRead)]
+    [HttpGet("status")]
+    public async Task<IActionResult> Status(
+        [FromQuery] bool includeArchived = false, CancellationToken ct = default)
+    {
+        var caller = Caller.FromUser(User);
+        if (caller is null) return Unauthorized();
+
+        var result = await statuses.ListAsync(caller, includeArchived, ct);
 
         return result.IsSuccess ? Ok(result.Value) : Translate(result.Error!);
     }

@@ -18,6 +18,8 @@ using Nabd.Alerting;
 using Nabd.Notifications;
 using Nabd.Notifications.Contracts;
 using Nabd.Alerting.Contracts;
+using Nabd.Realtime.Contracts;
+using Nabd.ApiHost.Realtime;
 
 _ = Nabd.Identity.EnumerationArmor.BurnHash;
 
@@ -55,6 +57,15 @@ builder.Services.AddSingleton<AdminDb>();
 builder.Services.AddSingleton<IPlatformTenantAdmin, PlatformTenantAdmin>();
 builder.Services.AddSingleton<AssetsDb>();
 builder.Services.AddSingleton<IAssetCatalog, AssetCatalog>();
+// ===== P5 spec 03 — the live dashboard's read model + push lane =====
+// The status read model (0028) serves both the door (caller lane, walled) and the
+// hub's post-NOTIFY re-read (system lane, tenant from the committed row).
+builder.Services.AddSingleton<IAssetStatusReader, AssetStatusReader>();
+// SignalR: one hub, one broadcaster behind the Realtime contract.
+builder.Services.AddSignalR();
+builder.Services.AddSingleton<IRealtimeBroadcaster, SignalRRealtimeBroadcaster>();
+// The LISTEN ear: hints from 0028's trigger, re-read through the SAME reader the door uses.
+builder.Services.AddHostedService<NabdEventsListener>();
 builder.Services.AddSingleton<DeviceTokenHasher>();
 builder.Services.AddSingleton<IDeviceLifecycle, DeviceLifecycle>();
 builder.Services.AddSingleton<ITemplateCatalog,TemplateCatalog>();
@@ -111,6 +122,9 @@ if (app.Environment.IsDevelopment())
 }
 
 app.MapControllers();
+// P5 spec 03: /hubs/dashboard — [Authorize] on the hub; the token rides ?access_token=
+// on this path only (JwtWall's OnMessageReceived).
+app.MapHub<DashboardHub>("/hubs/dashboard");
 app.UseAuthentication();
 app.UseAuthorization();
 
