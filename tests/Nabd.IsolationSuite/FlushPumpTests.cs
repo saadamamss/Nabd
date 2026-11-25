@@ -81,9 +81,6 @@ public sealed class FlushPumpTests
             Flushes.Add(readings);
             return Task.CompletedTask;
         }
-
-        public Task<IReadOnlyList<ReadingValueDto>> GetHistoryAsync(HistoryQuery query, CancellationToken ct = default)
-            => Task.FromResult<IReadOnlyList<ReadingValueDto>>([]);
     }
 
     /// <summary>R6/R10's ladder world: a batch holding the poison value fails
@@ -103,9 +100,6 @@ public sealed class FlushPumpTests
             Landed.AddRange(readings);
             return Task.CompletedTask;
         }
-
-        public Task<IReadOnlyList<ReadingValueDto>> GetHistoryAsync(HistoryQuery query, CancellationToken ct = default)
-            => Task.FromResult<IReadOnlyList<ReadingValueDto>>([]);
     }
 
     /// <summary>R10's classification probe: call 1 fails deterministically
@@ -126,9 +120,6 @@ public sealed class FlushPumpTests
                     new InvalidOperationException("simulated check violation"));
             throw new InvalidOperationException("simulated transient outage");
         }
-
-        public Task<IReadOnlyList<ReadingValueDto>> GetHistoryAsync(HistoryQuery query, CancellationToken ct = default)
-            => Task.FromResult<IReadOnlyList<ReadingValueDto>>([]);
     }
 
     /// <summary>The store NEVER answers — the final-flush bound's world.</summary>
@@ -139,9 +130,6 @@ public sealed class FlushPumpTests
 
         public Task StoreFlushAsync(IReadOnlyList<FlushReadingDto> readings, CancellationToken ct = default)
             => Task.Delay(Timeout.InfiniteTimeSpan, ct);
-
-        public Task<IReadOnlyList<ReadingValueDto>> GetHistoryAsync(HistoryQuery query, CancellationToken ct = default)
-            => Task.FromResult<IReadOnlyList<ReadingValueDto>>([]);
     }
 
     private sealed class ThrowingStore : IReadingsStore
@@ -151,9 +139,6 @@ public sealed class FlushPumpTests
 
         public Task StoreFlushAsync(IReadOnlyList<FlushReadingDto> readings, CancellationToken ct = default)
             => throw new InvalidOperationException("simulated commit failure");
-
-        public Task<IReadOnlyList<ReadingValueDto>> GetHistoryAsync(HistoryQuery query, CancellationToken ct = default)
-            => Task.FromResult<IReadOnlyList<ReadingValueDto>>([]);
     }
 
     private sealed class FlakyStore : IReadingsStore
@@ -168,9 +153,6 @@ public sealed class FlushPumpTests
                 throw new InvalidOperationException("simulated transient outage");
             return Task.CompletedTask;
         }
-
-        public Task<IReadOnlyList<ReadingValueDto>> GetHistoryAsync(HistoryQuery query, CancellationToken ct = default)
-            => Task.FromResult<IReadOnlyList<ReadingValueDto>>([]);
     }
 
     private sealed class RecordingTracker : IDeviceStatusTracker

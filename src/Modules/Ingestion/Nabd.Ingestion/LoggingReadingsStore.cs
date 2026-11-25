@@ -24,7 +24,4 @@ public sealed class LoggingReadingsStore(ILogger<LoggingReadingsStore> logger) :
         logger.LogInformation("store PLACEHOLDER (the pump replaces this) flush rows={Count}", readings.Count);
         return Task.CompletedTask;
     }
-    
-    public Task<IReadOnlyList<ReadingValueDto>> GetHistoryAsync(HistoryQuery query, CancellationToken ct = default)
-        => Task.FromResult<IReadOnlyList<ReadingValueDto>>([]);
 }

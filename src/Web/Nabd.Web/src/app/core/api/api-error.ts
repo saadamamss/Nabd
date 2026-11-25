@@ -30,6 +30,8 @@ const CODE_KEYS: Readonly<Record<string, string>> = {
   'rules:invalid_rule': 'errors.invalidRule',
   'rules:invalid_mute_window': 'errors.invalidMuteWindow',
   'rules:mute_window_overlap': 'errors.muteWindowOverlap',
+  'history:invalid_range': 'errors.historyRange',
+  'history:unknown_channel': 'errors.historyChannel',
 };
 
 /** Every code this UI knows how to translate (the parity test enumerates it). */

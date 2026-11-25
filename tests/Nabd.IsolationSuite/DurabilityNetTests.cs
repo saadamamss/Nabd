@@ -189,9 +189,6 @@ public sealed class DurabilityNetTests(PostgresFixture pg) : IClassFixture<Postg
 
         public Task StoreFlushAsync(IReadOnlyList<FlushReadingDto> readings, CancellationToken ct = default) =>
             throw new InvalidOperationException("the accept path must NOT run in a rejection fact");
-            
-        public Task<IReadOnlyList<ReadingValueDto>> GetHistoryAsync(HistoryQuery query, CancellationToken ct = default) =>
-            Task.FromResult<IReadOnlyList<ReadingValueDto>>([]);
     }
 
     private sealed class RecordingTracker : IDeviceStatusTracker

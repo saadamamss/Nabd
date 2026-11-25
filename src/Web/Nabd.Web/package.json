@@ -23,6 +23,7 @@
     "@angular/router": "^22.3.0",
     "@jsverse/transloco": "^8.4.0",
     "@microsoft/signalr": "^11.0.0",
+    "echarts": "6.1.0",
     "rxjs": "~7.8.0",
     "tslib": "^2.3.0"
   },

@@ -689,3 +689,59 @@ input {
 .dash-link[data-state='reconnecting'] .dash-dot {
   background: var(--app-warning);
 }
+
+// ---- Asset history (P5 spec 04) --------------------------------------------
+// Every property is logical: RTL mirrors for free. The band and the average
+// differ by line weight as well as colour (never colour alone).
+.hist-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 0.75rem 1rem;
+  margin-block-end: 1rem;
+}
+
+.hist-controls .ui-field {
+  min-inline-size: 10rem;
+}
+
+.hist-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.hist-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.5rem 1rem;
+  margin-block: 0.25rem 0.75rem;
+}
+
+.hist-chart-wrap {
+  position: relative;
+  margin-block-end: 1rem;
+}
+
+.hist-chart {
+  inline-size: 100%;
+  block-size: 22rem;
+}
+
+.hist-empty-overlay {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  margin: 0;
+  border: 1px dashed var(--app-border-strong);
+  border-radius: var(--app-radius-md);
+  color: var(--app-text-muted);
+  pointer-events: none;
+}
+
+.hist-table {
+  max-block-size: 22rem;
+  overflow: auto;
+}
