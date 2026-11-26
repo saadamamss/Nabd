@@ -170,10 +170,15 @@ public sealed class UserAuthentication : IUserAuthentication
         string? forbidden = PermissionMatrix.AssertSelf(acting, Operations.PasswordChange, tenantId, userId);
         if (forbidden is not null) return Result<Unit>.Failure(forbidden);
 
-        if (string.IsNullOrWhiteSpace(request.CurrentPassword) || request.NewPassword is null || request.NewPassword.Length < 8)
-        {
+        // Two different facts, two different answers (spec 07 S1): a blank current
+        // password is a credential denial (401, the login body); a null/short new
+        // password is a rule violation (400 weak_password), exactly as reset-confirm
+        // answers it. The wrong-current verify below keeps the 401 to itself.
+        if (string.IsNullOrWhiteSpace(request.CurrentPassword))
             return Result<Unit>.Failure(IdentityErrors.InvalidCredentials);
-        }
+
+        if (request.NewPassword is null || request.NewPassword.Length < 8)
+            return Result<Unit>.Failure(IdentityErrors.WeakPassword);
 
         var (conn, tx) = await _db.OpenTenantScopeAsync(tenantId, ct);
 
