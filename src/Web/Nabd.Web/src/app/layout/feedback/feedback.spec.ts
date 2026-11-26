@@ -212,7 +212,7 @@ describe('Feedback placement', () => {
       .filter((route) => route.component !== Shell && route.path !== '**')
       .map((route) => route.path);
 
-    expect(outside).toEqual(['login', 'forgot-password']);
+    expect(outside).toEqual(['login', 'forgot-password', 'reset-password/:token']);
   });
 
   it('the shell renders the floating control', async () => {

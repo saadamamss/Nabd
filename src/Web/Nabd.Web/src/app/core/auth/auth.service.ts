@@ -59,6 +59,18 @@ export class AuthService {
     return this.http.post<void>(`${this.base}/api/v1/auth/reset-password`, { email });
   }
 
+  /**
+   * The anonymous reset-confirm door: the token travels in the body, once.
+   * Success revokes every refresh token server-side, so the caller must clear
+   * any local session it still holds (the cookie is already dead).
+   */
+  confirmReset(token: string, newPassword: string): Observable<void> {
+    return this.http.post<void>(`${this.base}/api/v1/auth/reset-confirm`, {
+      token,
+      newPassword,
+    });
+  }
+
   /** Stores a successful login/refresh pair; the cookie rotates server-side. */
   apply(response: LoginResponse): void {
     this.session.set(response);

@@ -4,6 +4,7 @@ import { platformGuard } from './core/auth/platform.guard';
 import { Shell } from './layout/shell/shell';
 import { LoginPage } from './pages/login/login';
 import { ForgotPasswordPage } from './pages/forgot-password/forgot-password';
+import { ResetPasswordPage } from './pages/reset-password/reset-password';
 import { StubPage } from './pages/stub-page/stub-page';
 import { UsersPage } from './pages/users/users';
 import { AssetsPage } from './pages/assets/assets';
@@ -17,6 +18,8 @@ export const routes: Routes = [
   { path: 'login', component: LoginPage },
   // P5 spec 07: anonymous, like the sign-in door it hangs off.
   { path: 'forgot-password', component: ForgotPasswordPage },
+  // The mailed link's landing page; the token is a path segment (A1).
+  { path: 'reset-password/:token', component: ResetPasswordPage },
   {
     path: '',
     component: Shell,
