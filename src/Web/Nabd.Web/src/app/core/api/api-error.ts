@@ -38,6 +38,12 @@ const CODE_KEYS: Readonly<Record<string, string>> = {
   'alerting:invalid_filter': 'errors.alertFilter',
   'alerting:invalid_status': 'errors.alertStatus',
   'alerting:invalid_reason': 'errors.alertReason',
+  // spec 06: the submit door's refusals (FeedbackErrors in the Feedback room)
+  'feedback:invalid_message': 'errors.feedbackMessage',
+  'feedback:invalid_email': 'errors.feedbackEmail',
+  'feedback:invalid_locale': 'errors.feedbackLocale',
+  'feedback:invalid_page': 'errors.feedbackPage',
+  'feedback:rate_limited': 'errors.rateLimited',
 };
 
 /** Every code this UI knows how to translate (the parity test enumerates it). */
