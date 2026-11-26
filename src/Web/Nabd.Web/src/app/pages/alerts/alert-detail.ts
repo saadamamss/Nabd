@@ -5,12 +5,17 @@ import { TranslocoPipe, TranslocoService } from '@jsverse/transloco';
 import { ApiProblem, describeApiError } from '../../core/api/api-error';
 import { AlertEvent, AlertRow, AlertsApi } from '../../core/api/alerts.service';
 import { AssetRow, TenantAdminApi, UserRow } from '../../core/api/tenant-admin.service';
+import { AuthService } from '../../core/auth/auth.service';
+import { NoticeService } from '../../core/ui/notice.service';
 import {
   actorNameOf,
   assetNameOf,
   eventKey,
   evidenceFacts,
   reasonKey,
+  reasonTooLong as reasonOverCap,
+  RESOLVE_REASON_MAX,
+  resolveReasonOf,
   severityKey,
   statusKey,
   titleFor,
@@ -27,8 +32,14 @@ import { QuietHoursBadge } from './quiet-hours-badge';
  *
  * S3b adds the timeline: the audit trail as the door returns it (never re-sorted),
  * actor names resolved from the users list, and reason codes spoken in the reader's
- * language while free text stays exactly as the admin wrote it (R3). The actions
- * are S4 and deliberately absent.
+ * language while free text stays exactly as the admin wrote it (R3).
+ *
+ * S4 adds the two actions (E2/E3): acknowledge is for every role, resolve is a
+ * tenant_admin's and goes through the dialog with the 200-char counter. Both draw
+ * the row the door answers and re-read the trail it appended — the screen never
+ * reports a state the server did not write. A refusal is said where it applies:
+ * `invalid_reason` under the field, `invalid_status` beside the buttons plus a
+ * fresh read (someone else moved first).
  */
 @Component({
   selector: 'app-alert-detail-page',
@@ -157,6 +168,91 @@ import { QuietHoursBadge } from './quiet-hours-badge';
           }
         </section>
 
+        @if (hasActions()) {
+          <section class="ui-panel" data-actions>
+            <h2 class="alert-h2">{{ 'alerts.actions' | transloco }}</h2>
+
+            @if (actionProblem(); as p) {
+              <p class="ui-note is-error" data-action-problem>
+                {{ p.key | transloco }}
+                @if (p.code) {
+                  <code>{{ p.code }}</code>
+                }
+              </p>
+            }
+
+            <div class="ui-actions">
+              @if (a.status === 'open') {
+                <button
+                  class="ui-btn"
+                  type="button"
+                  data-action="ack"
+                  [disabled]="acking()"
+                  (click)="acknowledge()"
+                >
+                  {{ (acking() ? 'alerts.acknowledging' : 'alerts.acknowledge') | transloco }}
+                </button>
+              }
+
+              <!-- E2: resolve is the tenant_admin's; a viewer never sees the door -->
+              @if (canResolve()) {
+                <button class="ui-btn is-primary" type="button" data-action="resolve" (click)="openResolve()">
+                  {{ 'alerts.resolve' | transloco }}
+                </button>
+              }
+            </div>
+          </section>
+        }
+
+        @if (resolveOpen()) {
+          <div class="ui-overlay" role="presentation" (keydown.escape)="closeResolve()">
+            <div class="ui-dialog" role="dialog" aria-modal="true" aria-labelledby="resolve-alert">
+              <h2 id="resolve-alert">{{ 'alerts.resolveTitle' | transloco }}</h2>
+              <p class="ui-hint">{{ 'alerts.resolveBody' | transloco }}</p>
+
+              <label class="ui-field">
+                <span>{{ 'alerts.resolveReason' | transloco }}</span>
+                <textarea
+                  class="alert-reason-box"
+                  rows="3"
+                  [value]="reason()"
+                  [attr.aria-invalid]="reasonTooLong() || reasonProblem() ? 'true' : null"
+                  (input)="reason.set($any($event.target).value)"
+                ></textarea>
+                <small class="alert-counter" [class.is-over]="reasonTooLong()" data-reason-counter>
+                  {{ reasonLength() }} / {{ resolveMax }}
+                </small>
+              </label>
+
+              <p class="ui-hint">{{ 'alerts.resolveReasonHint' | transloco }}</p>
+
+              @if (reasonProblem(); as p) {
+                <p class="ui-note is-error" data-reason-problem>
+                  {{ p.key | transloco }}
+                  @if (p.code) {
+                    <code>{{ p.code }}</code>
+                  }
+                </p>
+              }
+
+              <div class="ui-actions">
+                <button class="ui-btn" type="button" (click)="closeResolve()" [disabled]="resolving()">
+                  {{ 'common.cancel' | transloco }}
+                </button>
+                <button
+                  class="ui-btn is-primary"
+                  type="button"
+                  data-action="confirm-resolve"
+                  [disabled]="resolving()"
+                  (click)="resolve()"
+                >
+                  {{ (resolving() ? 'alerts.resolving' : 'alerts.resolve') | transloco }}
+                </button>
+              </div>
+            </div>
+          </div>
+        }
+
         <section class="ui-panel">
           <h2 class="alert-h2">{{ 'alerts.state' | transloco }}</h2>
           <div class="ui-grid">
@@ -256,12 +352,37 @@ import { QuietHoursBadge } from './quiet-hours-badge';
       font-size: 0.875rem;
       overflow-wrap: anywhere;
     }
+
+    /* the shared .ui-field styles an input; the reason is a textarea */
+    .alert-reason-box {
+      inline-size: 100%;
+      padding-block: 0.6rem;
+      padding-inline: 0.75rem;
+      border: 1px solid var(--app-border-strong);
+      border-radius: var(--app-radius-sm);
+      background: var(--app-surface);
+      color: var(--app-text);
+      font: inherit;
+      resize: vertical;
+    }
+
+    .alert-counter {
+      text-align: end;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .alert-counter.is-over {
+      color: var(--app-alert);
+      font-weight: 700;
+    }
   `,
 })
 export class AlertDetailPage implements OnInit, OnDestroy {
   private readonly route = inject(ActivatedRoute);
   private readonly api = inject(AlertsApi);
   private readonly admin = inject(TenantAdminApi);
+  private readonly auth = inject(AuthService);
+  private readonly notices = inject(NoticeService);
   private readonly transloco = inject(TranslocoService);
 
   readonly alert = signal<AlertRow | null>(null);
@@ -275,6 +396,44 @@ export class AlertDetailPage implements OnInit, OnDestroy {
   readonly timelineProblem = signal<ApiProblem | null>(null);
   /** Names decorate the timeline; a failed users read must not hide the trail. */
   readonly users = signal<UserRow[]>([]);
+
+  /** S4: the two actions and the refusals they can collect. */
+  readonly acking = signal(false);
+  readonly resolving = signal(false);
+  readonly resolveOpen = signal(false);
+  readonly reason = signal('');
+  /** A refusal about the dialog's field, said under the field. */
+  readonly reasonProblem = signal<ApiProblem | null>(null);
+  /** A refusal about the action itself, said beside the buttons. */
+  readonly actionProblem = signal<ApiProblem | null>(null);
+
+  readonly resolveMax = RESOLVE_REASON_MAX;
+
+  /**
+   * E2: ack is every role's; resolve belongs to tenant_admin (and the platform
+   * admin the policy ladder also admits). The button is hidden — and the method
+   * still refuses locally, so a forced call cannot reach a door it may not open.
+   */
+  readonly canResolve = computed(() => {
+    const role = this.auth.user()?.role;
+    return role === 'tenant_admin' || role === 'platform_admin';
+  });
+
+  /**
+   * Nothing left to do on a resolved alert — and nothing for a viewer on an
+   * acknowledged one: the panel is drawn only when a button would be in it,
+   * never as a heading with an empty row beneath it.
+   */
+  readonly hasActions = computed(() => {
+    const row = this.alert();
+    if (row === null || row.status === 'resolved') return false;
+    return row.status === 'open' || this.canResolve();
+  });
+
+  /** Counted the server's way: what is left after the trim. */
+  readonly reasonLength = computed(() => resolveReasonOf(this.reason())?.length ?? 0);
+
+  readonly reasonTooLong = computed(() => reasonOverCap(this.reason()));
 
   /** Both titles ship with the alert; the locale picks one and shows the other. */
   readonly title = computed(() => {
@@ -356,6 +515,28 @@ export class AlertDetailPage implements OnInit, OnDestroy {
     });
   }
 
+  /** The door answers the row it wrote: draw it, then re-read the trail it appended. */
+  private drawWrittenRow(row: AlertRow): void {
+    this.alert.set(row);
+    this.loadEvents(row.alertId);
+  }
+
+  /**
+   * A refusal is said; when the alert itself moved, the screen is re-read so the
+   * buttons match the server. A failed re-read is silent — the message already
+   * explains what happened, and the last known state is still honest evidence.
+   */
+  private fail(problem: ApiProblem, alertId: string): void {
+    this.actionProblem.set(problem);
+
+    if (problem.code === 'alerting:invalid_status') {
+      this.api.get(alertId).subscribe({
+        next: (row) => this.drawWrittenRow(row),
+        error: () => undefined,
+      });
+    }
+  }
+
   /** One users read per tenant; the alert's own tenant is the caller's (RLS). */
   private loadUsers(tenantId: string): void {
     if (!tenantId || this.usersFor === tenantId) return;
@@ -377,6 +558,95 @@ export class AlertDetailPage implements OnInit, OnDestroy {
 
   assetName(assetId: string): string | null {
     return assetNameOf(this.assets(), assetId);
+  }
+
+  /**
+   * Acknowledge: one click, the door's row, a localized toast. A refusal about
+   * the state (`invalid_status`) means someone else moved first — say it and read
+   * the truth again instead of leaving a stale button on screen.
+   */
+  acknowledge(): void {
+    const row = this.alert();
+    if (!row || this.acking()) return;
+
+    this.acking.set(true);
+    this.actionProblem.set(null);
+
+    this.api.acknowledge(row.alertId).subscribe({
+      next: (updated) => {
+        this.acking.set(false);
+        this.drawWrittenRow(updated);
+        this.notices.show('toast.alertAcknowledged', 'success');
+      },
+      error: (error: unknown) => {
+        this.acking.set(false);
+        this.fail(describeApiError(error), row.alertId);
+      },
+    });
+  }
+
+  openResolve(): void {
+    if (!this.canResolve()) return;
+    this.reason.set('');
+    this.reasonProblem.set(null);
+    this.actionProblem.set(null);
+    this.resolveOpen.set(true);
+  }
+
+  closeResolve(): void {
+    if (this.resolving()) return;
+    this.resolveOpen.set(false);
+    this.reasonProblem.set(null);
+  }
+
+  /**
+   * Resolve with an optional reason (E3). A blank reason sends **no** parameter, so
+   * the server writes its own "manual" — the client never invents a code. A reason
+   * over the cap is refused here, before any request, with the same message the
+   * server would send.
+   */
+  resolve(): void {
+    const row = this.alert();
+    if (!row || this.resolving()) return;
+
+    if (!this.canResolve()) {
+      this.actionProblem.set({ code: 'identity:forbidden', key: 'errors.forbidden' });
+      return;
+    }
+
+    if (this.reasonTooLong()) {
+      this.reasonProblem.set({ code: 'alerting:invalid_reason', key: 'errors.alertReason' });
+      return;
+    }
+
+    this.resolving.set(true);
+    this.reasonProblem.set(null);
+    this.actionProblem.set(null);
+
+    this.api.resolve(row.alertId, this.reason()).subscribe({
+      next: (updated) => {
+        this.resolving.set(false);
+        this.resolveOpen.set(false);
+        this.drawWrittenRow(updated);
+        this.notices.show('toast.alertResolved', 'success');
+      },
+      error: (error: unknown) => {
+        this.resolving.set(false);
+        const problem = describeApiError(error);
+
+        // field-anchored: the reason itself was refused, the dialog stays open
+        if (problem.code === 'alerting:invalid_reason') {
+          this.reasonProblem.set(problem);
+          return;
+        }
+
+        // someone else resolved first: close the stale dialog, say so, re-read
+        if (problem.code === 'alerting:invalid_status') {
+          this.resolveOpen.set(false);
+        }
+        this.fail(problem, row.alertId);
+      },
+    });
   }
 
   eventKey(event: string): string | null {

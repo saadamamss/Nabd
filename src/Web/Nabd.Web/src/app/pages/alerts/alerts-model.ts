@@ -263,6 +263,27 @@ export function reasonKey(reason: string | null | undefined): string | null {
 }
 
 /**
+ * P5 spec 05, S4 — the resolve reason, measured the way the server measures it.
+ *
+ * `AlertService.ResolveAsync` trims first and refuses only what is still longer
+ * than 200 characters, then turns a blank into "manual". Mirroring the trim here
+ * keeps the client from refusing text the server would accept (a pasted 200-char
+ * sentence with a trailing newline) and keeps the counter honest.
+ */
+export const RESOLVE_REASON_MAX = 200;
+
+/** What the dialog sends: the trimmed text, or nothing at all when it is blank. */
+export function resolveReasonOf(reason: string): string | undefined {
+  const why = reason.trim();
+  return why.length ? why : undefined;
+}
+
+/** Counted after the same trim, so the counter and the refusal agree. */
+export function reasonTooLong(reason: string): boolean {
+  return reason.trim().length > RESOLVE_REASON_MAX;
+}
+
+/**
  * The actor's name from the users list (all roles can read it). `null` when the
  * id no longer resolves — the caller says "a user" instead of a blank cell.
  * A display name is the human answer; the email is the fallback that always exists.

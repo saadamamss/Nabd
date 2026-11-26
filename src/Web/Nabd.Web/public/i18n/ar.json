@@ -325,7 +325,16 @@
     "reasonCooldown": "فترة التهدئة",
     "reasonConditionRestored": "زوال السبب",
     "reasonDeviceOnlineRestored": "الجهاز عاد للاتصال",
-    "reasonManual": "حُلّ يدويًا"
+    "reasonManual": "حُلّ يدويًا",
+    "actions": "الإجراءات",
+    "acknowledge": "تأكيد الاطّلاع",
+    "acknowledging": "جارٍ التأكيد…",
+    "resolve": "حلّ التنبيه",
+    "resolving": "جارٍ الحل…",
+    "resolveTitle": "حلّ هذا التنبيه",
+    "resolveBody": "الحلّ يُغلق هذه الحالة، وكل ما تكتبه هنا يبقى في السجل.",
+    "resolveReason": "السبب (اختياري)",
+    "resolveReasonHint": "اتركه فارغًا ليُسجَّل كحلّ يدوي. حتى ٢٠٠ حرف."
   },
   "pages": {
     "assets": {
@@ -386,6 +395,8 @@
     "ruleCreated": "تم إنشاء القاعدة.",
     "ruleUpdated": "تم حفظ القاعدة.",
     "ruleDeleted": "تم حذف القاعدة.",
-    "guardSaved": "تم حفظ قاعدة الانقطاع."
+    "guardSaved": "تم حفظ قاعدة الانقطاع.",
+    "alertAcknowledged": "تم تأكيد الاطّلاع على التنبيه.",
+    "alertResolved": "تم حلّ التنبيه."
   }
 }

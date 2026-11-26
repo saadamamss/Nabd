@@ -85,6 +85,30 @@ export class AlertsApi {
   }
 
   /**
+   * Acknowledge (`POST /{id}/ack`). Every role may do this — the first responder
+   * is often not an admin (E2). The door answers the row it wrote, so the caller
+   * never guesses the new status or the timestamp.
+   */
+  acknowledge(alertId: string): Observable<AlertRow> {
+    return this.http.post<AlertRow>(`${this.base}/api/v1/alerts/${alertId}/ack`, null);
+  }
+
+  /**
+   * Resolve (`POST /{id}/resolve?reason=`), tenant_admin only. A blank reason is
+   * an **absent** parameter, never `?reason=`: the server records "manual" itself,
+   * and the wire must not carry an empty string the UI invented (E3).
+   */
+  resolve(alertId: string, reason: string): Observable<AlertRow> {
+    let params = new HttpParams();
+    const why = reason.trim();
+    if (why) params = params.set('reason', why);
+
+    return this.http.post<AlertRow>(`${this.base}/api/v1/alerts/${alertId}/resolve`, null, {
+      params,
+    });
+  }
+
+  /**
    * The audit trail (`GET /{id}/events`, E7), ascending in the door's documented
    * order — the client renders what it receives and never re-sorts a history.
    * Lifecycle events by default; `includeEvaluation` adds suppressed/deduplicated.

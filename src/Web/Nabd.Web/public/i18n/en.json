@@ -325,7 +325,16 @@
     "reasonCooldown": "Cooldown",
     "reasonConditionRestored": "Condition restored",
     "reasonDeviceOnlineRestored": "Device back online",
-    "reasonManual": "Resolved manually"
+    "reasonManual": "Resolved manually",
+    "actions": "Actions",
+    "acknowledge": "Acknowledge",
+    "acknowledging": "Acknowledging…",
+    "resolve": "Resolve",
+    "resolving": "Resolving…",
+    "resolveTitle": "Resolve this alert",
+    "resolveBody": "Resolving closes the episode. Anything you write here is kept in the history.",
+    "resolveReason": "Why (optional)",
+    "resolveReasonHint": "Leave it blank to record this as a manual resolve. Up to 200 characters."
   },
   "pages": {
     "assets": {
@@ -386,6 +395,8 @@
     "ruleCreated": "Rule created.",
     "ruleUpdated": "Rule saved.",
     "ruleDeleted": "Rule deleted.",
-    "guardSaved": "Offline guard saved."
+    "guardSaved": "Offline guard saved.",
+    "alertAcknowledged": "Alert acknowledged.",
+    "alertResolved": "Alert resolved."
   }
 }

@@ -6,6 +6,8 @@ import { BehaviorSubject } from 'rxjs';
 import { TranslocoService } from '@jsverse/transloco';
 import { AlertEvent, AlertRow } from '../../core/api/alerts.service';
 import { AssetRow, UserRow } from '../../core/api/tenant-admin.service';
+import { AuthService } from '../../core/auth/auth.service';
+import { NoticeService } from '../../core/ui/notice.service';
 import { provideTestTransloco } from '../../testing/test-transloco';
 import { DICTIONARIES } from '../../testing/test-dictionaries';
 import { routes } from '../../app.routes';
@@ -15,6 +17,9 @@ import {
   eventKey,
   evidenceFacts,
   reasonKey,
+  reasonTooLong,
+  RESOLVE_REASON_MAX,
+  resolveReasonOf,
 } from './alerts-model';
 
 // P5 spec 05, S3a — detail + evidence + the quiet-hours badge, RED first.
@@ -92,6 +97,19 @@ describe('alert timeline vocabulary', () => {
     expect(actorNameOf(users, VIEWER)).toBe('Night Shift');
     expect(actorNameOf(users, ADMIN)).toBe('ops@nabd.io');
     expect(actorNameOf(users, 'gone-forever')).toBeNull();
+  });
+});
+
+describe('resolve reason model', () => {
+  it('measures the text the way the server does: after the trim', () => {
+    expect(resolveReasonOf('   ')).toBeUndefined();
+    expect(resolveReasonOf('  compressor replaced  ')).toBe('compressor replaced');
+
+    // trailing space can never push a 200-char sentence over the cap
+    expect(reasonTooLong(`${'x'.repeat(200)}   `)).toBe(false);
+    expect(reasonTooLong('x'.repeat(200))).toBe(false);
+    expect(reasonTooLong('x'.repeat(201))).toBe(true);
+    expect(RESOLVE_REASON_MAX).toBe(200);
   });
 });
 
@@ -359,6 +377,226 @@ describe('AlertDetailPage', () => {
     expect(text()).toContain('Loading…');
     http.match(() => true);
   });
+
+  // ===== S4 — the two actions =====
+
+  /** The session is what gates the buttons; a role is the only thing it decides. */
+  function signIn(role: string): void {
+    TestBed.inject(AuthService).apply({
+      user: { userId: VIEWER, tenantId: 't1', email: 'me@nabd.io', role, locale: 'en' },
+      accessToken: 'test-token',
+    });
+  }
+
+  const ask = (selector: string): void =>
+    (dom().querySelector(selector) as HTMLButtonElement).click();
+
+  const resolveUrl = `/api/v1/alerts/${ALERT_ID}/resolve`;
+  const eventsUrl = `/api/v1/alerts/${ALERT_ID}/events`;
+
+  it('lets a viewer acknowledge, and never offers resolve', () => {
+    signIn('viewer');
+    load(alert(), [], [user(VIEWER, 'night@nabd.io', 'Night Shift')]);
+
+    expect(dom().querySelector('[data-action="ack"]')).not.toBeNull();
+    expect(dom().querySelector('[data-action="resolve"]')).toBeNull();
+
+    ask('[data-action="ack"]');
+    fixture.detectChanges();
+
+    const post = http.expectOne((request) => request.url === `/api/v1/alerts/${ALERT_ID}/ack`);
+    expect(post.request.method).toBe('POST');
+    post.flush(
+      alert({
+        status: 'acknowledged',
+        acknowledgedAt: '2026-11-24T12:05:00Z',
+        acknowledgedBy: VIEWER,
+      }),
+    );
+    fixture.detectChanges();
+
+    // the row the door wrote is drawn, and the trail it appended is read again
+    http
+      .expectOne((request) => request.url === eventsUrl)
+      .flush({ items: [{ event: 'acknowledged', at: '2026-11-24T12:05:00Z', actorUserId: VIEWER }] });
+    fixture.detectChanges();
+
+    expect(dom().querySelector('[data-status]')?.getAttribute('data-status')).toBe('acknowledged');
+    expect(text()).toContain('Night Shift');
+    expect(TestBed.inject(NoticeService).notices()[0].key).toBe('toast.alertAcknowledged');
+    // an acknowledged alert has nothing left to acknowledge
+    expect(dom().querySelector('[data-action="ack"]')).toBeNull();
+  });
+
+  it('draws no empty actions panel for a viewer on an acknowledged alert', () => {
+    signIn('viewer');
+    load(
+      alert({
+        status: 'acknowledged',
+        acknowledgedAt: '2026-11-24T12:05:00Z',
+        acknowledgedBy: VIEWER,
+      }),
+    );
+
+    // there is no door for a viewer here, and no heading over an empty row either
+    expect(dom().querySelector('[data-action="ack"]')).toBeNull();
+    expect(dom().querySelector('[data-action="resolve"]')).toBeNull();
+    expect(dom().querySelector('[data-actions]')).toBeNull();
+  });
+
+  it('offers an admin only resolve on an acknowledged alert', () => {
+    signIn('tenant_admin');
+    load(
+      alert({
+        status: 'acknowledged',
+        acknowledgedAt: '2026-11-24T12:05:00Z',
+        acknowledgedBy: VIEWER,
+      }),
+    );
+
+    expect(dom().querySelector('[data-actions]')).not.toBeNull();
+    expect(dom().querySelector('[data-action="ack"]')).toBeNull();
+    expect(dom().querySelector('[data-action="resolve"]')).not.toBeNull();
+  });
+
+  it('resolves with no reason as an absent parameter — never an empty one', () => {
+    signIn('tenant_admin');
+    load(alert());
+
+    ask('[data-action="resolve"]');
+    fixture.detectChanges();
+    expect(dom().querySelector('[aria-modal="true"]')).not.toBeNull();
+
+    ask('[data-action="confirm-resolve"]');
+    fixture.detectChanges();
+
+    const post = http.expectOne((request) => request.url === resolveUrl);
+    expect(post.request.method).toBe('POST');
+    expect(post.request.params.has('reason')).toBe(false);
+    post.flush(alert({ status: 'resolved', resolvedAt: '2026-11-24T13:30:00Z' }));
+    fixture.detectChanges();
+
+    http
+      .expectOne((request) => request.url === eventsUrl)
+      .flush({ items: [{ event: 'resolved', at: '2026-11-24T13:30:00Z', reason: 'manual' }] });
+    fixture.detectChanges();
+
+    expect(dom().querySelector('[data-status]')?.getAttribute('data-status')).toBe('resolved');
+    expect(dom().querySelector('[aria-modal="true"]')).toBeNull();
+    expect(TestBed.inject(NoticeService).notices()[0].key).toBe('toast.alertResolved');
+    expect(dom().querySelector('[data-action="ack"]')).toBeNull();
+  });
+
+  it('counts the reason and sends it trimmed', () => {
+    signIn('tenant_admin');
+    load(alert());
+
+    page.openResolve();
+    fixture.detectChanges();
+
+    const box = dom().querySelector('textarea') as HTMLTextAreaElement;
+    box.value = '  compressor replaced  ';
+    box.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+
+    expect(dom().querySelector('[data-reason-counter]')?.textContent).toContain('19 / 200');
+
+    ask('[data-action="confirm-resolve"]');
+    fixture.detectChanges();
+
+    const post = http.expectOne((request) => request.url === resolveUrl);
+    expect(post.request.params.get('reason')).toBe('compressor replaced');
+    post.flush(alert({ status: 'resolved', resolvedAt: '2026-11-24T13:30:00Z' }));
+    fixture.detectChanges();
+    http.expectOne((request) => request.url === eventsUrl).flush({ items: [] });
+    fixture.detectChanges();
+  });
+
+  it('refuses a 201-character reason without asking the server', () => {
+    signIn('tenant_admin');
+    load(alert());
+
+    page.openResolve();
+    fixture.detectChanges();
+
+    const box = dom().querySelector('textarea') as HTMLTextAreaElement;
+    box.value = 'x'.repeat(201);
+    box.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+
+    expect(dom().querySelector('[data-reason-counter]')?.textContent).toContain('201 / 200');
+
+    ask('[data-action="confirm-resolve"]');
+    fixture.detectChanges();
+
+    http.expectNone((request) => request.url.includes('/resolve'));
+    expect(dom().querySelector('[data-reason-problem]')?.textContent).toContain('200 characters');
+    expect(dom().querySelector('[aria-modal="true"]')).not.toBeNull();
+  });
+
+  it("anchors the server's invalid_reason to the field and keeps the dialog", () => {
+    signIn('tenant_admin');
+    load(alert());
+
+    page.openResolve();
+    fixture.detectChanges();
+
+    ask('[data-action="confirm-resolve"]');
+    fixture.detectChanges();
+
+    http
+      .expectOne((request) => request.url === resolveUrl)
+      .flush({ code: 'alerting:invalid_reason' }, { status: 422, statusText: 'Unprocessable' });
+    fixture.detectChanges();
+
+    expect(dom().querySelector('[data-reason-problem]')?.textContent).toContain('200 characters');
+    expect(dom().querySelector('[aria-modal="true"]')).not.toBeNull();
+    // the field's refusal is not the action's
+    expect(dom().querySelector('[data-action-problem]')).toBeNull();
+  });
+
+  it('says someone resolved first, then reads the alert again', () => {
+    signIn('tenant_admin');
+    load(alert());
+
+    page.openResolve();
+    fixture.detectChanges();
+
+    ask('[data-action="confirm-resolve"]');
+    fixture.detectChanges();
+
+    http
+      .expectOne((request) => request.url === resolveUrl)
+      .flush({ code: 'alerting:invalid_status' }, { status: 422, statusText: 'Unprocessable' });
+    fixture.detectChanges();
+
+    expect(dom().querySelector('[aria-modal="true"]')).toBeNull();
+    expect(dom().querySelector('[data-action-problem]')?.textContent).toContain('already resolved');
+
+    // the truth is read again, never assumed
+    http
+      .expectOne((request) => request.url === `/api/v1/alerts/${ALERT_ID}`)
+      .flush(alert({ status: 'resolved', resolvedAt: '2026-11-24T13:30:00Z' }));
+    fixture.detectChanges();
+    http.expectOne((request) => request.url === eventsUrl).flush({ items: [] });
+    fixture.detectChanges();
+
+    expect(dom().querySelector('[data-status]')?.getAttribute('data-status')).toBe('resolved');
+  });
+
+  it("refuses a forced resolve as a viewer, in the reader's language", () => {
+    signIn('viewer');
+    load(alert());
+
+    page.resolve();
+    fixture.detectChanges();
+
+    http.expectNone((request) => request.url.includes('/resolve'));
+    expect(page.actionProblem()?.key).toBe('errors.forbidden');
+    expect(dom().querySelector('[data-action-problem]')?.textContent).toContain(
+      'role does not allow',
+    );
+  });
 });
 
 describe('alerts detail dictionary, errors and route', () => {
@@ -395,6 +633,17 @@ describe('alerts detail dictionary, errors and route', () => {
     'alerts.reasonConditionRestored',
     'alerts.reasonDeviceOnlineRestored',
     'alerts.reasonManual',
+    'alerts.actions',
+    'alerts.acknowledge',
+    'alerts.acknowledging',
+    'alerts.resolve',
+    'alerts.resolving',
+    'alerts.resolveTitle',
+    'alerts.resolveBody',
+    'alerts.resolveReason',
+    'alerts.resolveReasonHint',
+    'toast.alertAcknowledged',
+    'toast.alertResolved',
   ];
 
   it.each(keys)('%s exists in both dictionaries', (key) => {
