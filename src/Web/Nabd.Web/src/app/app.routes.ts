@@ -9,6 +9,8 @@ import { AssetsPage } from './pages/assets/assets';
 import { DevicesPage } from './pages/devices/devices';
 import { RulesPage } from './pages/rules/rules';
 import { DashboardPage } from './pages/dashboard/dashboard';
+import { AlertsPage } from './pages/alerts/alerts';
+import { AlertDetailPage } from './pages/alerts/alert-detail';
 
 export const routes: Routes = [
   { path: 'login', component: LoginPage },
@@ -30,7 +32,9 @@ export const routes: Routes = [
           import('./pages/asset-history/asset-history').then((m) => m.AssetHistoryPage),
       },
       { path: 'devices/:deviceId/rules', component: RulesPage },
-      { path: 'alerts', component: StubPage, data: { page: 'alerts' } },
+      // P5 spec 05: the alert feed (FR-42) and one alert's evidence.
+      { path: 'alerts', component: AlertsPage },
+      { path: 'alerts/:alertId', component: AlertDetailPage },
       { path: 'settings', component: StubPage, data: { page: 'settings' } },
       {
         path: 'platform',

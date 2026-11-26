@@ -33,6 +33,14 @@ using Xunit;
 //   9. §5.1 — ACK records who/when; the ladder's roles are the matrix's.
 //  10. doors — unknown id 404-hides; bad filters are 422 (never a 500).
 //
+// P5 spec 05 S1 adds the server facts the alerts page needs (E7/E8/E9, R2):
+//  11. the events door — lifecycle events by default, suppressed/deduplicated
+//      only on request, actor IDs untouched, newest 500 read ascending.
+//  12. deterministic order — suppressed shares its instant with the opened it
+//      belongs to; the rank tie-break makes opened-first exact and repeatable.
+//  13. QuietHoursSuppressed is a ROW fact — true for a muted episode, kept by
+//      an ack, false again once a reopen starts a new episode.
+//
 // The lifecycle is driven through the REAL D4 bus (publish CrossingDetected /
 // ConditionRestored exactly as the engine does), never by calling internals.
 
@@ -41,6 +49,10 @@ public sealed class AlertLifecycleTests(PostgresFixture pg) : IClassFixture<Post
     // A fixed clock in the PAST: event times drive the machine (cooldown math), while
     // manual ack/resolve stamp wall-clock now — a past T0 keeps the audit order stable.
     private static readonly DateTimeOffset T0 = new(2026, 1, 15, 12, 0, 0, TimeSpan.Zero);
+
+    // P5 spec 05 S1: 11:00–13:00 UTC on Thursdays — covers T0, ends before T0+2h.
+    private const int Thursday = 4;
+    private static readonly MuteWindow Lunch = new(Thursday, 11 * 60, 13 * 60);
 
     private static string Uid() => Guid.NewGuid().ToString("N")[..12].ToLowerInvariant();
 
@@ -503,5 +515,212 @@ public sealed class AlertLifecycleTests(PostgresFixture pg) : IClassFixture<Post
         var badLimit = await service.ListAsync(Admin(tenant), new AlertFilter(Limit: 0));
         Assert.False(badLimit.IsSuccess);
         Assert.Equal(AlertErrors.InvalidFilter, badLimit.Error);
+    }
+
+    // ===== P5 spec 05 S1 — the events door + the quiet-hours row fact =========
+
+    private static async Task<AlertSnapshot> OnlyAlertAsync(
+        AlertService service, TenantRegistrationResult tenant)
+    {
+        var listed = await service.ListAsync(Admin(tenant), new AlertFilter());
+        Assert.True(listed.IsSuccess, listed.Error);
+        return Assert.Single(listed.Value);
+    }
+
+    // ---- fact 11 — lifecycle by default, evaluation on request, ids not names --
+
+    [Fact]
+    public async Task the_events_door_hides_evaluation_noise_by_default_and_returns_actor_ids()
+    {
+        var tenant = await RegisterAsync("events");
+        var (_, device, rule) = await FreshAsync(tenant, "events");
+        var (service, _, rec) = Rig();
+        var muted = rule with { MuteWindows = [Lunch] };
+
+        await rec.Bus.PublishAsync(Crossing(muted, device, T0, 10.0));              // opened + suppressed
+        await rec.Bus.PublishAsync(Crossing(muted, device, T0.AddMinutes(5), 11.0)); // deduplicated
+        var alert = await OnlyAlertAsync(service, tenant);
+
+        var acknowledged = await service.AcknowledgeAsync(Viewer(tenant), alert.AlertId);
+        Assert.True(acknowledged.IsSuccess, acknowledged.Error);
+
+        // E8 default: a mute/cooldown episode's noise never reaches the timeline.
+        var quiet = await service.ListEventsAsync(Viewer(tenant), alert.AlertId);
+        Assert.True(quiet.IsSuccess, quiet.Error);
+        Assert.Equal(["opened", "acknowledged"], quiet.Value.Select(e => e.Event).ToArray());
+
+        // ...while the evaluation view tells the whole truth, ascending by at.
+        var full = await service.ListEventsAsync(Viewer(tenant), alert.AlertId, includeEvaluation: true);
+        Assert.True(full.IsSuccess, full.Error);
+        Assert.Equal(
+            ["opened", "suppressed", "deduplicated", "acknowledged"],
+            full.Value.Select(e => e.Event).ToArray());
+
+        Assert.Equal("mute_window", full.Value[1].Reason);
+        Assert.Equal("open", full.Value[2].Reason);
+        Assert.Null(full.Value[3].Reason);
+
+        // the actor is the id, never an invented name (the UI resolves it)
+        Assert.Null(full.Value[0].ActorUserId);
+        Assert.Equal(tenant.AdminUser.UserId, full.Value[3].ActorUserId);
+
+        // the evidence rides as JSON, not as a string of JSON
+        Assert.NotNull(full.Value[0].Detail);
+        Assert.Equal(10.0, full.Value[0].Detail!.Value.GetProperty("value").GetDouble());
+    }
+
+    // ---- fact 12 — R2: equal instants come back opened-first, twice the same ---
+
+    [Fact]
+    public async Task events_that_share_an_instant_have_one_documented_order()
+    {
+        var tenant = await RegisterAsync("tie");
+        var (_, device, rule) = await FreshAsync(tenant, "tie");
+        var (service, _, rec) = Rig();
+
+        await rec.Bus.PublishAsync(Crossing(rule with { MuteWindows = [Lunch] }, device, T0, 10.0));
+        var alert = await OnlyAlertAsync(service, tenant);
+
+        var first = await service.ListEventsAsync(Admin(tenant), alert.AlertId, includeEvaluation: true);
+        Assert.True(first.IsSuccess, first.Error);
+        Assert.Equal(["opened", "suppressed"], first.Value.Select(e => e.Event).ToArray());
+        Assert.Equal(first.Value[0].At, first.Value[1].At);   // the same instant, by design
+
+        // repeatable: the random id cannot decide the order
+        var second = await service.ListEventsAsync(Admin(tenant), alert.AlertId, includeEvaluation: true);
+        Assert.Equal(
+            first.Value.Select(e => (e.Event, e.At)).ToArray(),
+            second.Value.Select(e => (e.Event, e.At)).ToArray());
+    }
+
+    // ---- fact 13 — E8: newest 500, ascending ----------------------------------
+
+    [Fact]
+    public async Task the_events_door_keeps_the_newest_500_in_reading_order()
+    {
+        var tenant = await RegisterAsync("cap");
+        var (_, device, rule) = await FreshAsync(tenant, "cap");
+        var (service, _, rec) = Rig();
+
+        await rec.Bus.PublishAsync(Crossing(rule, device, T0, 10.0));   // opened at T0
+        var alert = await OnlyAlertAsync(service, tenant);
+
+        // 520 evaluation rows, one per second after T0 — the opened event is the oldest
+        await using (var conn = await pg.Owner.OpenConnectionAsync())
+        {
+            await using var pad = new NpgsqlCommand("""
+                INSERT INTO alerting.alert_events (tenant_id, alert_id, event, reason, at)
+                SELECT @t, @a, 'deduplicated', 'open', @start + (g || ' seconds')::interval
+                FROM generate_series(1, 520) AS g;
+                """, conn);
+            pad.Parameters.AddWithValue("t", tenant.Tenant.TenantId);
+            pad.Parameters.AddWithValue("a", alert.AlertId);
+            pad.Parameters.AddWithValue("start", T0.UtcDateTime);
+            await pad.ExecuteNonQueryAsync();
+        }
+
+        var all = await service.ListEventsAsync(Admin(tenant), alert.AlertId, includeEvaluation: true);
+        Assert.True(all.IsSuccess, all.Error);
+        Assert.Equal(500, all.Value.Count);
+        Assert.Equal("deduplicated", all.Value[0].Event);              // the opened row fell off
+        Assert.Equal(T0.AddSeconds(21), all.Value[0].At);              // oldest of the newest 500
+        Assert.Equal(T0.AddSeconds(520), all.Value[^1].At);            // the newest, last
+
+        // ascending without a single inversion
+        for (var i = 1; i < all.Value.Count; i++)
+            Assert.True(all.Value[i].At >= all.Value[i - 1].At,
+                $"event {i} at {all.Value[i].At:O} precedes {all.Value[i - 1].At:O}");
+
+        // the default view is untouched by the evaluation cap
+        var quiet = await service.ListEventsAsync(Admin(tenant), alert.AlertId);
+        Assert.Equal(["opened"], quiet.Value.Select(e => e.Event).ToArray());
+    }
+
+    // ---- fact 14 — the P1 wall: unknown and foreign are the same 404 ----------
+
+    [Fact]
+    public async Task an_unknown_or_foreign_alert_timeline_is_a_404_not_an_empty_list()
+    {
+        var tenantA = await RegisterAsync("evwallA");
+        var tenantB = await RegisterAsync("evwallB");
+        await FreshAsync(tenantA, "evwallA");       // A is a real, empty tenant
+        var (_, deviceB, ruleB) = await FreshAsync(tenantB, "evwallB");
+        var (serviceA, _, _) = Rig();
+        var (serviceB, _, recB) = Rig();
+
+        await recB.Bus.PublishAsync(Crossing(ruleB, deviceB, T0, 10.0));
+        var alertB = Assert.Single((await serviceB.ListAsync(Admin(tenantB), new AlertFilter())).Value);
+
+        var unknown = await serviceA.ListEventsAsync(Admin(tenantA), Guid.NewGuid());
+        Assert.False(unknown.IsSuccess, "an unknown alert must not return []");
+        Assert.Equal(AlertErrors.AlertNotFound, unknown.Error);
+
+        var stolen = await serviceA.ListEventsAsync(Admin(tenantA), alertB.AlertId);
+        Assert.False(stolen.IsSuccess, "a foreign alert must not return []");
+        Assert.Equal(AlertErrors.AlertNotFound, stolen.Error);
+    }
+
+    // ---- fact 15 — E9: the flag is a row fact with an episode's lifetime -------
+
+    [Fact]
+    public async Task the_quiet_hours_flag_survives_an_ack_and_clears_on_a_reopen()
+    {
+        var tenant = await RegisterAsync("flag");
+        var (_, device, rule) = await FreshAsync(tenant, "flag");
+        var (service, _, rec) = Rig();
+        var muted = rule with { MuteWindows = [Lunch] };
+
+        await rec.Bus.PublishAsync(Crossing(muted, device, T0, 10.0));   // muted episode opens
+        var alert = await OnlyAlertAsync(service, tenant);
+
+        Assert.True(alert.QuietHoursSuppressed);
+        Assert.Equal(AlertStatuses.Open, alert.Status);                  // the row still exists
+        Assert.True((await service.GetAsync(Admin(tenant), alert.AlertId)).Value.QuietHoursSuppressed);
+
+        var acked = await service.AcknowledgeAsync(Viewer(tenant), alert.AlertId);
+        Assert.True(acked.IsSuccess, acked.Error);
+        Assert.True(acked.Value.QuietHoursSuppressed);                   // the episode never notified
+        Assert.True((await OnlyAlertAsync(service, tenant)).QuietHoursSuppressed);
+
+        // resolve inside the window, then a re-raise AFTER the window (14:00 > 13:00 end)
+        await rec.Bus.PublishAsync(Restored(muted, device, T0.AddMinutes(10), 5.0));
+        await rec.Bus.PublishAsync(Crossing(muted, device, T0.AddMinutes(120), 10.0));
+
+        var reopened = await OnlyAlertAsync(service, tenant);
+        Assert.Equal(alert.AlertId, reopened.AlertId);                   // one story thread
+        Assert.Equal(AlertStatuses.Open, reopened.Status);
+        Assert.Equal(T0.AddMinutes(120), reopened.OpenedAt);
+        Assert.False(reopened.QuietHoursSuppressed);                     // a new episode speaks again
+
+        // the old suppressed event is still in the audit trail, but it predates the episode
+        var trail = await service.ListEventsAsync(Admin(tenant), alert.AlertId, includeEvaluation: true);
+        Assert.Contains(trail.Value, e => e.Event == "suppressed" && e.Reason == "mute_window");
+        Assert.Contains(trail.Value, e => e.Event == "reopened" && e.At == T0.AddMinutes(120));
+    }
+
+    // ---- fact 16 — E9: the raise path's own snapshot agrees with the row ------
+
+    [Fact]
+    public async Task a_muted_raise_reports_the_flag_on_the_snapshot_it_returns()
+    {
+        var tenant = await RegisterAsync("returned");
+        var (_, device, rule) = await FreshAsync(tenant, "returned");
+        var service = new AlertService(pg.Alerts);
+
+        var raised = await service.RaiseAsync(
+            rule with { MuteWindows = [Lunch] },
+            new CommittedReading(device, "temperature", 10.0, T0));
+
+        Assert.True(raised.IsSuccess, raised.Error);
+        Assert.Equal(AlertRaiseOutcome.Muted, raised.Value.Outcome);
+        Assert.True(raised.Value.Alert.QuietHoursSuppressed);            // the fan-out sees the same fact
+        Assert.True((await OnlyAlertAsync(service, tenant)).QuietHoursSuppressed);
+
+        // and an unmuted raise stays false
+        var (_, otherDevice, otherRule) = await FreshAsync(tenant, "returned2");
+        var loud = await service.RaiseAsync(
+            otherRule, new CommittedReading(otherDevice, "temperature", 10.0, T0.AddMinutes(1)));
+        Assert.Equal(AlertRaiseOutcome.Opened, loud.Value.Outcome);
+        Assert.False(loud.Value.Alert.QuietHoursSuppressed);
     }
 }
