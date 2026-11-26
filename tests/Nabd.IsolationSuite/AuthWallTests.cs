@@ -237,6 +237,30 @@ public sealed class AuthWallTests(PostgresFixture pg) : IClassFixture<PostgresFi
         Assert.True(newProof.IsSuccess, newProof.Error ?? "new password refused");
     }
 
+    // ---- fact 6b: a weak new password is a RULE violation, not a credential one --
+
+    [Fact]
+    public async Task weak_new_password_is_a_rule_violation_not_a_credential_one()
+    {
+        var t = await RegisterAsync("n");
+        var auth = NewAuth();
+        var tenantId = t.Tenant.TenantId;
+        var adminId = t.AdminUser.UserId;
+        var acting = new CallerContext(adminId, tenantId, ["tenant_admin"]);
+
+        // the CURRENT password is right; the only failure is the public length law,
+        // so the answer is 400 weak_password — NOT the 401 wrong-current answer
+        // (spec 07 S1: the two legs used to share one branch and one lie)
+        var weak = await auth.ChangePasswordAsync(
+            acting, tenantId, adminId, new ChangePasswordRequest("CorrectHorse1", "Seven77"));
+        Assert.False(weak.IsSuccess);
+        Assert.Equal(IdentityErrors.WeakPassword, weak.Error);
+
+        // a refusal rotates nothing: the old proof still opens the door
+        var stillHimself = await auth.LoginAsync(new LoginRequest(t.AdminUser.Email, "CorrectHorse1", "10.0.0.7"));
+        Assert.True(stillHimself.IsSuccess, "old password died from a refused weak change");
+    }
+
     // ---- fact 7: the access token's anatomy (row 2) ---------------------------
 
     [Fact]
