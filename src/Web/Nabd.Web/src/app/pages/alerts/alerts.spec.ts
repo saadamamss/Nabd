@@ -1,4 +1,4 @@
-import { Component } from '@angular/core';
+import { Component, signal, WritableSignal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { HttpErrorResponse } from '@angular/common/http';
 import { provideHttpClient } from '@angular/common/http';
@@ -8,6 +8,11 @@ import { TranslocoService } from '@jsverse/transloco';
 import { describeApiError } from '../../core/api/api-error';
 import { AlertRow } from '../../core/api/alerts.service';
 import { AssetRow } from '../../core/api/tenant-admin.service';
+import {
+  DashboardSocket,
+  DashboardSocketHandlers,
+  RealtimeState,
+} from '../../core/realtime/dashboard.socket';
 import { provideTestTransloco } from '../../testing/test-transloco';
 import { DICTIONARIES } from '../../testing/test-dictionaries';
 import { routes } from '../../app.routes';
@@ -15,8 +20,11 @@ import { AlertsPage } from './alerts';
 import {
   DEFAULT_FILTERS,
   QueryRead,
+  applyHint,
   doorQuery,
   focusedAlertId,
+  matchesFilters,
+  placeRow,
   queryParams,
   readFilters,
   severityKey,
@@ -118,14 +126,90 @@ describe('alerts filter model', () => {
   });
 });
 
+describe('alerts live model', () => {
+  it('matches the active filter the way the door would', () => {
+    const row = alert();
+
+    expect(matchesFilters(row, DEFAULT_FILTERS)).toBe(true);
+    expect(matchesFilters(row, { ...DEFAULT_FILTERS, status: 'open' })).toBe(true);
+    expect(matchesFilters(row, { ...DEFAULT_FILTERS, status: 'resolved' })).toBe(false);
+    expect(matchesFilters(row, { ...DEFAULT_FILTERS, severity: 'warn' })).toBe(false);
+    expect(matchesFilters(row, { ...DEFAULT_FILTERS, assetId: 'some-other-asset' })).toBe(false);
+  });
+
+  it('places a door row where the door would: opened_at desc, capped, never twice', () => {
+    const older = alert({ alertId: 'older', openedAt: '2026-11-24T08:00:00Z' });
+    const middle = alert({ alertId: 'middle', openedAt: '2026-11-24T10:00:00Z' });
+    const newest = alert({ alertId: 'newest', openedAt: '2026-11-24T12:00:00Z' });
+    const rows = [middle, older];
+
+    expect(placeRow(rows, newest, 100).map((row) => row.alertId)).toEqual([
+      'newest',
+      'middle',
+      'older',
+    ]);
+
+    // the same id is replaced in place, not duplicated — a push can arrive twice
+    const acked = alert({ alertId: 'middle', openedAt: '2026-11-24T10:00:00Z', status: 'acknowledged' });
+    const placed = placeRow(rows, acked, 100);
+    expect(placed.length).toBe(2);
+    expect(placed.find((row) => row.alertId === 'middle')?.status).toBe('acknowledged');
+
+    // the page's cap is the door's cap (E5), not an invented one
+    expect(placeRow(rows, newest, 1).map((row) => row.alertId)).toEqual(['newest']);
+  });
+
+  it('moves only the pushed row, and only the facts the hint carries', () => {
+    const untouched = alert({ alertId: 'other', status: 'resolved' });
+    const rows = [alert(), untouched];
+
+    const moved = applyHint(rows, {
+      alertId: ALERT_ID,
+      assetId: ASSET_ID,
+      severity: 'warn',
+      status: 'acknowledged',
+      // the trigger's `since` is the row's `opened_at`, so a reopen moves it too
+      since: '2026-11-24T12:05:00Z',
+    });
+
+    expect(moved[0].status).toBe('acknowledged');
+    expect(moved[0].severity).toBe('warn');
+    expect(moved[0].openedAt).toBe('2026-11-24T12:05:00Z');
+    expect(moved[1]).toBe(untouched);
+    // the hint has no ack time: it must not appear until the door's row lands
+    expect('acknowledgedAt' in moved[0]).toBe(false);
+  });
+});
+
 describe('AlertsPage', () => {
   let http: HttpTestingController;
   let fixture: ComponentFixture<AlertsPage>;
   let page: AlertsPage;
+  let destroyed: boolean;
+
+  const socketState = signal<RealtimeState>('live');
+  let handlers: DashboardSocketHandlers | null = null;
+  const socket = {
+    state: socketState as WritableSignal<RealtimeState>,
+    start: vi.fn((next: DashboardSocketHandlers) => {
+      handlers = next;
+    }),
+    stop: vi.fn(),
+  };
 
   const text = (): string => (fixture.nativeElement as HTMLElement).textContent ?? '';
+  const rowStatus = (): string | null =>
+    (fixture.nativeElement as HTMLElement)
+      .querySelector('tr[data-status]')
+      ?.getAttribute('data-status') ?? null;
 
   beforeEach(() => {
+    handlers = null;
+    destroyed = false;
+    socketState.set('live');
+    socket.start.mockClear();
+    socket.stop.mockClear();
+
     TestBed.configureTestingModule({
       imports: [AlertsPage],
       providers: [
@@ -136,6 +220,7 @@ describe('AlertsPage', () => {
           { path: 'alerts/:alertId', component: DetailStub },
         ]),
         ...provideTestTransloco(),
+        { provide: DashboardSocket, useValue: socket },
       ],
     });
 
@@ -146,8 +231,9 @@ describe('AlertsPage', () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     http.verify();
-    fixture.destroy();
+    if (!destroyed) fixture.destroy();
   });
 
   /** Assets load once; alerts load on every filter change. */
@@ -307,6 +393,150 @@ describe('AlertsPage', () => {
     expect(text()).toContain('Loading…');
     // the answer is irrelevant here; `match` drops both in-flight reads so verify() stays quiet
     http.match(() => true);
+  });
+
+  it('moves a row from the hint at once, then takes the rest from the door', async () => {
+    flushAssets();
+    flushAlerts([alert()]);
+    await fixture.whenStable();
+    expect(rowStatus()).toBe('open');
+
+    vi.useFakeTimers();
+
+    handlers!.onAlert({
+      kind: 'changed',
+      alert: {
+        alertId: ALERT_ID,
+        assetId: ASSET_ID,
+        severity: 'critical',
+        status: 'acknowledged',
+        since: '2026-11-24T11:50:00Z',
+      },
+    });
+
+    // the committed status is on screen before any read — and the list is NOT reloaded
+    fixture.detectChanges();
+    expect(rowStatus()).toBe('acknowledged');
+    http.expectNone((request) => request.url === '/api/v1/alerts');
+
+    // the ack time exists only in the door's row, so it arrives afterwards
+    vi.advanceTimersByTime(40);
+    http
+      .expectOne((request) => request.url === `/api/v1/alerts/${ALERT_ID}`)
+      .flush(alert({ status: 'acknowledged', acknowledgedAt: '2026-11-24T12:10:00Z' }));
+
+    fixture.detectChanges();
+    expect(page.alerts().length).toBe(1);
+    expect(page.alerts()[0].acknowledgedAt).toBe('2026-11-24T12:10:00Z');
+    expect(rowStatus()).toBe('acknowledged');
+  });
+
+  it('prepends a raised alert that matches the filter, and drops one it excludes', async () => {
+    flushAssets();
+    flushAlerts([alert()]);
+    await fixture.whenStable();
+
+    page.setStatus('open');
+    await fixture.whenStable();
+    flushAlerts([alert()]);
+    await fixture.whenStable();
+
+    vi.useFakeTimers();
+
+    const raised = alert({
+      alertId: 'aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa',
+      titleEn: 'Door left open',
+      openedAt: '2026-11-24T12:20:00Z',
+    });
+    handlers!.onAlert({
+      kind: 'raised',
+      alert: {
+        alertId: raised.alertId,
+        assetId: raised.assetId,
+        severity: raised.severity,
+        status: raised.status,
+        since: raised.openedAt,
+      },
+    });
+    vi.advanceTimersByTime(40);
+    http.expectOne((request) => request.url === `/api/v1/alerts/${raised.alertId}`).flush(raised);
+    fixture.detectChanges();
+
+    // the door's order is opened_at DESC, and the cap is the active one
+    expect(page.alerts().map((row) => row.alertId)).toEqual([raised.alertId, ALERT_ID]);
+    expect(text()).toContain('Door left open');
+
+    // an alert the active status filter excludes never joins the list
+    const resolved = alert({
+      alertId: 'bbbbbbbb-2222-4222-8222-bbbbbbbbbbbb',
+      status: 'resolved',
+      openedAt: '2026-11-24T12:30:00Z',
+    });
+    handlers!.onAlert({
+      kind: 'raised',
+      alert: {
+        alertId: resolved.alertId,
+        assetId: resolved.assetId,
+        severity: resolved.severity,
+        status: resolved.status,
+        since: resolved.openedAt,
+      },
+    });
+    vi.advanceTimersByTime(40);
+    http.expectOne((request) => request.url === `/api/v1/alerts/${resolved.alertId}`).flush(resolved);
+    fixture.detectChanges();
+
+    expect(page.alerts().map((row) => row.alertId)).toEqual([raised.alertId, ALERT_ID]);
+  });
+
+  it('refetches every 30 s while the socket is not live, quietly and without a storm', () => {
+    vi.useFakeTimers();
+
+    // The page's interval must be created under the fake clock, so this test owns
+    // a page mounted after the clock was swapped (the harness mounts with real ones).
+    // The harness page's first reads are answered before it goes away.
+    flushAssets();
+    flushAlerts([alert()]);
+    fixture.destroy();
+    fixture = TestBed.createComponent(AlertsPage);
+    page = fixture.componentInstance;
+    fixture.detectChanges();
+
+    flushAssets();
+    flushAlerts([alert()]);
+
+    socketState.set('reconnecting');
+
+    vi.advanceTimersByTime(30_000);
+    http.expectOne((request) => request.url === '/api/v1/alerts').flush([alert({ status: 'resolved' })]);
+    fixture.detectChanges();
+    expect(rowStatus()).toBe('resolved');
+
+    // a failed stand-in read changes nothing: the rows stay, no banner appears
+    vi.advanceTimersByTime(30_000);
+    http
+      .expectOne((request) => request.url === '/api/v1/alerts')
+      .flush({ code: 'alerting:invalid_filter' }, { status: 422, statusText: 'Unprocessable Entity' });
+    fixture.detectChanges();
+    expect(page.problem()).toBeNull();
+    expect(rowStatus()).toBe('resolved');
+
+    // live again: the stand-in stands down
+    socketState.set('live');
+    vi.advanceTimersByTime(120_000);
+    http.expectNone((request) => request.url === '/api/v1/alerts');
+  });
+
+  it('owns the socket while it is mounted and stops it on destroy', () => {
+    flushAssets();
+    flushAlerts([alert()]);
+
+    expect(socket.start).toHaveBeenCalledTimes(1);
+    expect(socket.start.mock.calls[0][0]).toBeTruthy();
+
+    fixture.destroy();
+    destroyed = true;
+    expect(socket.stop).toHaveBeenCalledTimes(1);
   });
 });
 

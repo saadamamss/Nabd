@@ -1,5 +1,6 @@
 import { Params } from '@angular/router';
-import { AlertDetail, AlertQuery } from '../../core/api/alerts.service';
+import { AlertDetail, AlertQuery, AlertRow } from '../../core/api/alerts.service';
+import { AlertChangeHint } from '../../core/api/dashboard.service';
 
 /**
  * P5 spec 05, S2 — the alert list's filter vocabulary, pure and testable.
@@ -296,6 +297,59 @@ export function actorNameOf(
   if (!user) return null;
 
   return user.displayName?.trim() || user.email;
+}
+
+/**
+ * P5 spec 05, S5 — the live lane's pure half.
+ *
+ * A hub push is a **hint**, never a row (spec 03, B10): `AlertChange` carries the
+ * five facts the trigger committed and nothing else — no title, no evidence, no
+ * acknowledgment time. So the page may *move* a row it already has from the hint,
+ * and anything it does not have is fetched from the list's own door before it is
+ * drawn. The list never invents a row, and never a timestamp.
+ */
+
+/** Would the door have returned this row under the active filters? */
+export function matchesFilters(row: AlertRow, filters: AlertFilters): boolean {
+  if (filters.status !== 'all' && row.status !== filters.status) return false;
+  if (filters.severity !== 'all' && row.severity !== filters.severity) return false;
+  if (filters.assetId && row.assetId !== filters.assetId) return false;
+  return true;
+}
+
+/**
+ * The hint's own facts, applied at once so a row flips without a reload. `since`
+ * is the row's `opened_at` (the trigger writes it), so a reopen moves the row too.
+ * Everything the hint does not carry — ack time, resolved time, quiet-hours flag —
+ * is left for the door's row to supply.
+ */
+export function applyHint(rows: readonly AlertRow[], hint: AlertChangeHint): AlertRow[] {
+  return rows.map((row) =>
+    row.alertId === hint.alertId
+      ? { ...row, status: hint.status, severity: hint.severity, openedAt: hint.since }
+      : row,
+  );
+}
+
+/**
+ * Puts a door row where the door itself would put it — `ORDER BY opened_at DESC`
+ * (`AlertService.ListAsync`) — and keeps the page's cap. An id already present is
+ * replaced, never duplicated: a hint can arrive twice for the same alert.
+ */
+export function placeRow(
+  rows: readonly AlertRow[],
+  row: AlertRow,
+  limit: number,
+): AlertRow[] {
+  const next = rows.filter((candidate) => candidate.alertId !== row.alertId);
+  const at = next.findIndex(
+    (candidate) => Date.parse(candidate.openedAt) < Date.parse(row.openedAt),
+  );
+
+  if (at === -1) next.push(row);
+  else next.splice(at, 0, row);
+
+  return next.slice(0, limit);
 }
 
 /**

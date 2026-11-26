@@ -4,7 +4,9 @@ import { Subscription } from 'rxjs';
 import { TranslocoPipe, TranslocoService } from '@jsverse/transloco';
 import { ApiProblem, describeApiError } from '../../core/api/api-error';
 import { AlertRow, AlertsApi } from '../../core/api/alerts.service';
+import { AlertChange } from '../../core/api/dashboard.service';
 import { AssetRow, TenantAdminApi } from '../../core/api/tenant-admin.service';
+import { DashboardSocket } from '../../core/realtime/dashboard.socket';
 import { SelectComponent } from '../../core/ui/select';
 import { QuietHoursBadge } from './quiet-hours-badge';
 import {
@@ -16,10 +18,13 @@ import {
   LIMITS,
   SEVERITY_FILTERS,
   STATUS_FILTERS,
+  applyHint,
   assetNameOf,
   doorQuery,
   focusedAlertId,
   hasFilters,
+  matchesFilters,
+  placeRow,
   queryParams,
   readFilters,
   severityKey,
@@ -28,12 +33,17 @@ import {
 } from './alerts-model';
 
 /**
- * P5 spec 05, S2 — the alert list (FR-42).
+ * P5 spec 05, S2 + S5 — the alert list (FR-42).
  *
  * The URL is the filter's only home (E4): changing a filter navigates, and the
  * page loads from `queryParamMap`, so back/forward and a pasted link all take the
  * same road. The list itself is the server's answer, newest first; the cap is the
  * door's (E5), never an invented pagination.
+ *
+ * Live (S5): spec 03's `alerts` channel moves a row from the hint's committed
+ * facts and then re-reads that row from the list's own door — the page never
+ * grows a row out of a hint. When the socket is not live, a quiet 30 s re-read
+ * stands in, so the list still ages without a reload or an error storm.
  */
 @Component({
   selector: 'app-alerts-page',
@@ -212,6 +222,7 @@ export class AlertsPage implements OnInit, OnDestroy {
   private readonly router = inject(Router);
   private readonly api = inject(AlertsApi);
   private readonly admin = inject(TenantAdminApi);
+  private readonly socket = inject(DashboardSocket);
   private readonly transloco = inject(TranslocoService);
 
   readonly filters = signal<AlertFilters>(DEFAULT_FILTERS);
@@ -250,6 +261,10 @@ export class AlertsPage implements OnInit, OnDestroy {
   readonly filtersActive = computed(() => hasFilters(this.filters()));
 
   private paramsSub: Subscription | null = null;
+  private fallback: ReturnType<typeof setInterval> | null = null;
+  private coalesce: ReturnType<typeof setTimeout> | null = null;
+  /** Alert ids pushed since the last door read — a burst becomes a few reads. */
+  private readonly pending = new Set<string>();
 
   ngOnInit(): void {
     // Names only decorate the list; a failure must not hide the alerts themselves.
@@ -271,10 +286,31 @@ export class AlertsPage implements OnInit, OnDestroy {
       this.filters.set(readFilters(query));
       this.load();
     });
+
+    // Spec 03's `alerts` channel (E6). The page owns the connection while it is
+    // mounted; a push never reloads the list, it moves one row and re-reads it.
+    this.socket.start({
+      onStatus: () => undefined,
+      onAlert: (change) => this.applyChange(change),
+      onResync: () => this.load(true),
+    });
+
+    // The socket is a hint lane, not a dependency: while it is not live the page
+    // still has to age, so a quiet re-read every 30 s stands in. A quiet read
+    // never blinks the table and never raises a banner — an outage must not
+    // become an error storm (test fact 10).
+    this.fallback = setInterval(() => {
+      if (this.socket.state() !== 'live' && document.visibilityState === 'visible') {
+        this.load(true);
+      }
+    }, 30_000);
   }
 
   ngOnDestroy(): void {
     this.paramsSub?.unsubscribe();
+    if (this.fallback) clearInterval(this.fallback);
+    if (this.coalesce) clearTimeout(this.coalesce);
+    this.socket.stop();
   }
 
   setStatus(value: string): void {
@@ -297,21 +333,76 @@ export class AlertsPage implements OnInit, OnDestroy {
     this.navigate({ ...DEFAULT_FILTERS, limit: this.filters().limit });
   }
 
-  load(): void {
-    this.loading.set(true);
-    this.problem.set(null);
+  /**
+   * Reads the list for the current filters. `quiet` is the fallback/reconnect
+   * read: it keeps the rows and the screen as they are, so a failed stand-in read
+   * cannot erase a list the last good answer produced.
+   */
+  load(quiet = false): void {
+    if (!quiet) {
+      this.loading.set(true);
+      this.problem.set(null);
+    }
 
     this.api.list(doorQuery(this.filters())).subscribe({
       next: (rows) => {
         this.alerts.set(rows);
+        this.problem.set(null);
         this.loading.set(false);
       },
       error: (error: unknown) => {
+        if (quiet) return;
         this.alerts.set([]);
         this.problem.set(describeApiError(error));
         this.loading.set(false);
       },
     });
+  }
+
+  /**
+   * A hub push (E6). The hint's own facts are committed, so a row already on
+   * screen moves at once — no reload, no invented ack time. The door's row is
+   * then read and merged: it alone knows the acknowledgment/resolution times and
+   * the quiet-hours flag, and it decides whether the row still matches the
+   * filter at all.
+   *
+   * `kind` (`raised`/`changed`) needs no branch: it says why a row moved, and the
+   * answer is the same either way — move the row you have, read the row you do not.
+   */
+  applyChange(change: AlertChange): void {
+    const hint = change.alert;
+    const filters = this.filters();
+
+    this.alerts.update((rows) =>
+      applyHint(rows, hint).filter((row) => matchesFilters(row, filters)),
+    );
+
+    this.pending.add(hint.alertId);
+    if (this.coalesce) return;
+
+    this.coalesce = setTimeout(() => this.readPending(), 40);
+  }
+
+  /** One door read per pushed alert, after a burst has settled (B11's habit). */
+  private readPending(): void {
+    const ids = [...this.pending];
+    this.pending.clear();
+    this.coalesce = null;
+
+    for (const alertId of ids) {
+      this.api.get(alertId).subscribe({
+        next: (row) => {
+          const filters = this.filters();
+          this.alerts.update((rows) =>
+            matchesFilters(row, filters)
+              ? placeRow(rows, row, filters.limit)
+              : rows.filter((candidate) => candidate.alertId !== row.alertId),
+          );
+        },
+        // A hint whose row cannot be read is a missed hint, not a screen error.
+        error: () => undefined,
+      });
+    }
   }
 
   statusKey(status: string): string | null {
