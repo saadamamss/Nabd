@@ -37,6 +37,12 @@ public static class Operations
     public const string AlertAck = "alert.acknowledge";
     public const string AlertResolve = "alert.resolve";
     public const string TelegramManage = "telegram.manage";   // P4 spec 09 (FR-38): the user's own chat
+    // P5 spec 06 (F6b): every authenticated role may send feedback — in ALL
+    // three rows, because the [Viewer] door admits all three (RouteWallTests 3).
+    public const string FeedbackSubmit = "feedback.submit";
+    // P5 spec 06 (F6/F9): the owner's fleet-wide read — platform_admin alone.
+    // The door is [PlatformAdmin], so only that row may carry it.
+    public const string FeedbackRead = "feedback.read";
 }
 
 
@@ -50,7 +56,8 @@ public static class AuthorizationMatrix
             Operations.UserLocaleSet,Operations.PasswordChange,
             Operations.DeviceRead, Operations.AssetRead, Operations.TemplateRead,
             Operations.RuleRead,
-            Operations.AlertRead, Operations.AlertAck, Operations.TelegramManage
+            Operations.AlertRead, Operations.AlertAck, Operations.TelegramManage,
+            Operations.FeedbackSubmit
         },
 
         ["tenant_admin"] = new HashSet<string>
@@ -66,7 +73,7 @@ public static class AuthorizationMatrix
             Operations.RuleRead, Operations.RuleCreate,
             Operations.RuleUpdate, Operations.RuleDelete,
             Operations.AlertRead, Operations.AlertAck, Operations.AlertResolve,
-            Operations.TelegramManage
+            Operations.TelegramManage, Operations.FeedbackSubmit
         },
         ["platform_admin"] = new HashSet<string>
         {
@@ -77,12 +84,13 @@ public static class AuthorizationMatrix
             Operations.DeviceRegister, Operations.DeviceRead,
             Operations.DeviceTokenReissue, Operations.DeviceRevoke,
             Operations.TenantList, Operations.TenantDisable, Operations.TenantEnable,
+            Operations.FeedbackRead,
             Operations.AssetRead, Operations.AssetCreate,
             Operations.AssetUpdate, Operations.AssetArchive,Operations.TemplateRead,
             Operations.RuleRead, Operations.RuleCreate,
             Operations.RuleUpdate, Operations.RuleDelete,
             Operations.AlertRead, Operations.AlertAck, Operations.AlertResolve,
-            Operations.TelegramManage
+            Operations.TelegramManage, Operations.FeedbackSubmit
         },
     };
 

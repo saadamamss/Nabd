@@ -17,6 +17,10 @@
     <Project Path="src/Modules/Assets/Nabd.Assets.Contracts/Nabd.Assets.Contracts.csproj" />
     <Project Path="src/Modules/Assets/Nabd.Assets/Nabd.Assets.csproj" />
   </Folder>
+  <Folder Name="/src/Modules/Feedback/">
+    <Project Path="src/Modules/Feedback/Nabd.Feedback.Contracts/Nabd.Feedback.Contracts.csproj" />
+    <Project Path="src/Modules/Feedback/Nabd.Feedback/Nabd.Feedback.csproj" />
+  </Folder>
   <Folder Name="/src/Modules/Identity/">
     <Project Path="src/Modules/Identity/Nabd.Identity.Contracts/Nabd.Identity.Contracts.csproj" />
     <Project Path="src/Modules/Identity/Nabd.Identity/Nabd.Identity.csproj" />

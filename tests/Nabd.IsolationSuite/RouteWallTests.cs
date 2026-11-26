@@ -134,10 +134,12 @@ public sealed class RouteWallTests
             r => r is DenyAnonymousAuthorizationRequirement);
     }
 
-    // ---- fact 5 (spec 06): the fleet door is EXACTLY list/disable/enable -------
+    // ---- fact 5 (spec 06): the fleet door is EXACTLY four doors ----------------
     // The generic facts 1–3 would silently accept ANY admin surface; this pins
-    // the FR-61 shape itself: three doors, PlatformAdmin walls, the fleet
-    // operations from THE matrix constants (no copy), under one route prefix.
+    // the admin shape itself: the FR-61 fleet three + the spec-06 feedback read
+    // (P5 spec 06 S3, C1), PlatformAdmin walls, the operations from THE matrix
+    // constants (no copy), under one route prefix. Widened deliberately — a
+    // FIFTH door still fails here, so the pin stays a pin, not a rubber stamp.
 
     [Fact]
     public void the_fleet_door_is_exactly_list_disable_enable_under_the_platform_route()
@@ -147,12 +149,15 @@ public sealed class RouteWallTests
             .Select(a => a.Action)
             .ToDictionary(d => d.Name, d => d);
 
-        Assert.Equal(["DisableTenant", "EnableTenant", "ListTenants"], doors.Keys.OrderBy(k => k).ToArray());
+        Assert.Equal(
+            ["DisableTenant", "EnableTenant", "ListFeedback", "ListTenants"],
+            doors.Keys.OrderBy(k => k).ToArray());
 
         var expected = new (string Door, string Op, string Verb)[]
         {
             ("DisableTenant", Operations.TenantDisable, "Http"),
             ("EnableTenant", Operations.TenantEnable, "Http"),
+            ("ListFeedback", Operations.FeedbackRead, "Http"),   // P5 spec 06 S3
             ("ListTenants", Operations.TenantList, "Http"),
         };
 

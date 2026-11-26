@@ -379,7 +379,12 @@
     "alertFilter": "That filter is not valid.",
     "alertStatus": "This alert is already resolved.",
     "alertReason": "The reason must be 200 characters or fewer.",
-    "deviceRevoked": "This device is revoked. A revoked token cannot be restored — recovery is a new device."
+    "deviceRevoked": "This device is revoked. A revoked token cannot be restored — recovery is a new device.",
+    "feedbackMessage": "Write a message first (up to 2,000 characters).",
+    "feedbackEmail": "That contact email is not valid.",
+    "feedbackLocale": "That language is not supported.",
+    "feedbackPage": "This page's address is too long to attach.",
+    "rateLimited": "You are sending too quickly. Try again shortly."
   },
   "toast": {
     "created": "Added.",
@@ -398,5 +403,19 @@
     "guardSaved": "Offline guard saved.",
     "alertAcknowledged": "Alert acknowledged.",
     "alertResolved": "Alert resolved."
+  },
+  "feedback": {
+    "open": "Send feedback",
+    "title": "Send feedback",
+    "intro": "Tell us what is wrong or what would help. The page you are on is attached.",
+    "message": "Your message",
+    "messageHint": "Up to 2,000 characters.",
+    "counter": "{{count}} / {{max}}",
+    "contact": "Your email",
+    "contactHint": "Only if you want a reply.",
+    "send": "Send",
+    "sending": "Sending…",
+    "sent": "Thanks — your feedback was sent.",
+    "retryIn": "Please wait {{seconds}} s before sending again."
   }
 }

@@ -3,6 +3,7 @@ using NetArchTest.Rules;
 using Nabd.Admin;
 using Nabd.Alerting;
 using Nabd.Assets;
+using Nabd.Feedback;
 using Nabd.Identity;
 using Nabd.Ingestion;
 using Nabd.Notifications;
@@ -34,6 +35,7 @@ public sealed class RoomBoundaryTests
         new(typeof(NotificationsModule).Assembly, "Nabd.Notifications.Contracts"),
         new(typeof(RealtimeModule).Assembly, "Nabd.Realtime.Contracts"),
         new(typeof(AdminModule).Assembly, "Nabd.Admin.Contracts"),
+        new(typeof(FeedbackModule).Assembly, "Nabd.Feedback.Contracts"),
         new(null, "Nabd.SharedKernel"),  // SharedKernel itself: referenced by all, references none of the rooms
     ];
 
@@ -139,6 +141,7 @@ public sealed class RoomBoundaryTests
             typeof(IdentityModule), typeof(AssetsModule), typeof(IngestionModule),
             typeof(TelemetryStoreModule), typeof(RulesModule), typeof(AlertingModule),
             typeof(NotificationsModule), typeof(RealtimeModule), typeof(AdminModule),
+            typeof(FeedbackModule),
         };
 
         foreach (var marker in rooms)

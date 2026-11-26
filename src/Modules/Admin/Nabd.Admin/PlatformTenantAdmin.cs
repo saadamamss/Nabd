@@ -55,6 +55,71 @@ public sealed class PlatformTenantAdmin : IPlatformTenantAdmin
         return Result<IReadOnlyList<TenantFleetSnapshot>>.Success(rows);
     }
 
+    /// <summary>
+    /// P5 spec 06 S3 (F6/F9/F10, C6/C9): the owner's read. Same audited lane as
+    /// ListTenants — `nabd_admin` holds SELECT on `feedback.messages` (0030), so
+    /// the room queries the table directly and never references `Nabd.Feedback`.
+    /// The author columns are the stamped ones; `user_id` is NOT joined back to
+    /// `identity.users` (no grant there, and a deleted author must survive).
+    /// </summary>
+    public async Task<Result<FeedbackFleetPage>> ListFeedbackAsync(
+        CallerContext acting, int limit, CancellationToken ct = default)
+    {
+        var deny = PermissionMatrix.Assert(acting, Operations.FeedbackRead, acting.TenantId);
+        if (deny is not null)
+        {
+            Audit(acting, "feedback.list", null, "denied");
+            return Result<FeedbackFleetPage>.Failure(deny);
+        }
+
+        // C6: refuse the page size BEFORE any SQL — the door answers 422, not a
+        // silently clamped page that would make `total` look like a lie.
+        if (limit is < 1 or > FeedbackReadLimits.Max)
+        {
+            Audit(acting, "feedback.list", null, "invalid_limit");
+            return Result<FeedbackFleetPage>.Failure(AdminErrors.InvalidFeedbackLimit);
+        }
+
+        await using var conn = await _db.OpenAdminConnectionAsync(ct);
+
+        long total;
+        await using (var count = new NpgsqlCommand("SELECT count(*) FROM feedback.messages", conn))
+            total = (long)(await count.ExecuteScalarAsync(ct))!;
+
+        var rows = new List<FeedbackFleetRow>();
+
+        await using (var cmd = new NpgsqlCommand("""
+            SELECT f.id, t.name, f.author_email, f.author_display_name,
+                   f.page, f.locale, f.message, f.contact_email, f.created_at
+              FROM feedback.messages f
+              JOIN identity.tenants t ON t.id = f.tenant_id
+             ORDER BY f.created_at DESC, f.id
+             LIMIT @limit
+            """, conn))
+        {
+            cmd.Parameters.AddWithValue("limit", limit);
+
+            await using var reader = await cmd.ExecuteReaderAsync(ct);
+            while (await reader.ReadAsync(ct))
+            {
+                rows.Add(new FeedbackFleetRow(
+                    reader.GetGuid(0),
+                    reader.GetString(1),
+                    reader.GetString(2),
+                    reader.IsDBNull(3) ? null : reader.GetString(3),
+                    reader.GetString(4),
+                    reader.GetString(5),
+                    reader.GetString(6),
+                    reader.IsDBNull(7) ? null : reader.GetString(7),
+                    reader.GetDateTime(8)));
+            }
+        }
+
+        Audit(acting, "feedback.list", null, $"listed={rows.Count}");
+
+        return Result<FeedbackFleetPage>.Success(new FeedbackFleetPage(rows, total));
+    }
+
     public async Task<Result<Unit>> DisableTenantAsync(CallerContext acting, Guid targetTenantId, CancellationToken ct = default)
     {
         return await SetTenantActiveAsync(acting, targetTenantId, isActive: false, action: "tenant.disable", ct);
@@ -104,10 +169,14 @@ public sealed class PlatformTenantAdmin : IPlatformTenantAdmin
             string.Join('+', acting.RoleCodes),
             action, targetTenantId, outcome);
 
+    // C8: the default arm THROWS. It used to fall back to TenantList, which made
+    // a forgotten case pass silently (platform_admin holds both). Only the two
+    // write actions reach this map; a third name is a programming error, loudly.
     private static string OperationOf(string action) => action switch
     {
         "tenant.disable" => Operations.TenantDisable,
         "tenant.enable" => Operations.TenantEnable,
-        _ => Operations.TenantList,
+        "feedback.list" => Operations.FeedbackRead,
+        _ => throw new ArgumentOutOfRangeException(nameof(action), action, "unmapped admin action"),
     };
 }

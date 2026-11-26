@@ -5,6 +5,7 @@ import { PLATFORM_ADMIN } from '../../core/auth/auth.models';
 import { AuthService } from '../../core/auth/auth.service';
 import { LocaleService } from '../../core/i18n/locale.service';
 import { TenantService } from '../../core/tenant/tenant.service';
+import { FeedbackButton } from '../feedback/feedback';
 
 interface NavItem {
   path: string;
@@ -33,7 +34,7 @@ function readRail(): boolean {
 
 @Component({
   selector: 'app-shell',
-  imports: [RouterOutlet, RouterLink, RouterLinkActive, TranslocoPipe],
+  imports: [RouterOutlet, RouterLink, RouterLinkActive, TranslocoPipe, FeedbackButton],
   templateUrl: './shell.html',
   styleUrl: './shell.scss',
 })

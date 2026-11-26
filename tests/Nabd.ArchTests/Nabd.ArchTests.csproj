@@ -19,6 +19,8 @@
     <ProjectReference Include="..\..\src\Modules\Realtime\Nabd.Realtime.Contracts\Nabd.Realtime.Contracts.csproj" />
     <ProjectReference Include="..\..\src\Modules\Admin\Nabd.Admin\Nabd.Admin.csproj" />
     <ProjectReference Include="..\..\src\Modules\Admin\Nabd.Admin.Contracts\Nabd.Admin.Contracts.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Feedback\Nabd.Feedback\Nabd.Feedback.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Feedback\Nabd.Feedback.Contracts\Nabd.Feedback.Contracts.csproj" />
     <ProjectReference Include="..\..\src\SharedKernel\Nabd.SharedKernel\Nabd.SharedKernel.csproj" />
   </ItemGroup>
 
