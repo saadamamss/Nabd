@@ -253,7 +253,9 @@ describe('Feedback placement', () => {
     const start = scss.indexOf('.feedback-fab {');
     const block = scss.slice(start, scss.indexOf('}', start));
 
-    expect(block).toContain('inset-inline-start');
+    // the side is a design choice (moved to the inline end on 2026-11-26); what
+    // must hold is that it is LOGICAL — RTL then mirrors it with no second sheet
+    expect(block).toMatch(/inset-inline-(start|end)/);
     expect(block).not.toMatch(/(^|[^-])\bleft:/);
     expect(block).not.toMatch(/(^|[^-])\bright:/);
   });
