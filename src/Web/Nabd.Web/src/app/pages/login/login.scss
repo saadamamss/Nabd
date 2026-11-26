@@ -291,6 +291,21 @@ form {
   cursor: progress;
 }
 
+.forgot {
+  margin-block-start: 1rem;
+  font-size: 0.875rem;
+}
+
+.forgot a {
+  color: var(--app-brand);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.forgot a:hover {
+  text-decoration: underline;
+}
+
 .footnote {
   margin-block-start: 1.5rem;
   color: var(--app-text-muted);

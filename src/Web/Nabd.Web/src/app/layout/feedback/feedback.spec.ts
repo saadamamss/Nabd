@@ -204,7 +204,7 @@ describe('FeedbackButton', () => {
 });
 
 describe('Feedback placement', () => {
-  it('only /login renders outside the shell, so the button is on every authenticated route', () => {
+  it('only the anonymous doors render outside the shell, so the button is on every authenticated route', () => {
     const shell = routes.find((route) => route.component === Shell);
     expect(shell?.children?.length ?? 0).toBeGreaterThan(0);
 
@@ -212,7 +212,7 @@ describe('Feedback placement', () => {
       .filter((route) => route.component !== Shell && route.path !== '**')
       .map((route) => route.path);
 
-    expect(outside).toEqual(['login']);
+    expect(outside).toEqual(['login', 'forgot-password', 'reset-password/:token']);
   });
 
   it('the shell renders the floating control', async () => {

@@ -102,6 +102,55 @@ describe('authInterceptor', () => {
     expect(notices.notices().map((notice) => notice.key)).toContain('auth.tenantDisabled');
   });
 
+  it('a wrong current password is the door’s answer, not an expired session (C1)', () => {
+    auth.apply(SESSION);
+    let failure: unknown = null;
+
+    client
+      .patch('/api/v1/auth/t1/users/u1/password', {
+        currentPassword: 'WrongHorse1',
+        newPassword: 'GoodPass12',
+      })
+      .subscribe({ error: (error: unknown) => (failure = error) });
+
+    http
+      .expectOne('/api/v1/auth/t1/users/u1/password')
+      .flush({ code: 'identity:invalid_credentials' }, { status: 401, statusText: 'Unauthorized' });
+
+    // no /auth/refresh, no retry, no navigation: verify() proves the absence
+    expect((failure as { status?: number }).status).toBe(401);
+    expect(auth.isAuthenticated()).toBe(true);
+    expect(auth.accessToken()).toBe('access-1');
+    expect(router.navigate).not.toHaveBeenCalled();
+    expect(notices.notices().length).toBe(0);
+  });
+
+  it('a 401 on the change door WITHOUT that code is still an expired token', () => {
+    auth.apply(SESSION);
+    let completed = false;
+
+    client
+      .patch('/api/v1/auth/t1/users/u1/password', {
+        currentPassword: 'CorrectHorse1',
+        newPassword: 'GoodPass12',
+      })
+      .subscribe({ complete: () => (completed = true) });
+
+    http
+      .expectOne('/api/v1/auth/t1/users/u1/password')
+      .flush({}, { status: 401, statusText: 'Unauthorized' });
+
+    http.expectOne('/api/v1/auth/refresh').flush({ ...SESSION, accessToken: 'access-2' });
+
+    const retry = http.expectOne('/api/v1/auth/t1/users/u1/password');
+    expect(retry.request.headers.get('Authorization')).toBe('Bearer access-2');
+    retry.flush(null, { status: 204, statusText: 'No Content' });
+
+    expect(completed).toBe(true);
+    expect(auth.accessToken()).toBe('access-2');
+    expect(router.navigate).not.toHaveBeenCalled();
+  });
+
   it('never attaches a bearer to the pre-auth doors', () => {
     auth.apply(SESSION);
 

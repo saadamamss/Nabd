@@ -50,6 +50,42 @@ export class AuthService {
       .pipe(tap((response) => this.apply(response)));
   }
 
+  /**
+   * The anonymous reset-request door (spec 07): it answers 204 for every address,
+   * known or not, so the caller may not infer anything from success — only a
+   * 429 (with its wait) or a transport failure is a different outcome.
+   */
+  requestReset(email: string): Observable<void> {
+    return this.http.post<void>(`${this.base}/api/v1/auth/reset-password`, { email });
+  }
+
+  /**
+   * The anonymous reset-confirm door: the token travels in the body, once.
+   * Success revokes every refresh token server-side, so the caller must clear
+   * any local session it still holds (the cookie is already dead).
+   */
+  confirmReset(token: string, newPassword: string): Observable<void> {
+    return this.http.post<void>(`${this.base}/api/v1/auth/reset-confirm`, {
+      token,
+      newPassword,
+    });
+  }
+
+  /**
+   * The password-change door (spec 07, C11): self only, and the ids come from
+   * the token's own snapshot — never from a form or a route. No snapshot means
+   * no honest door to call, so nothing leaves the client.
+   */
+  changePassword(currentPassword: string, newPassword: string): Observable<void> {
+    const user = this.user();
+    if (!user) return throwError(() => new Error('changePassword needs a session snapshot'));
+
+    return this.http.patch<void>(
+      `${this.base}/api/v1/auth/${user.tenantId}/users/${user.userId}/password`,
+      { currentPassword, newPassword },
+    );
+  }
+
   /** Stores a successful login/refresh pair; the cookie rotates server-side. */
   apply(response: LoginResponse): void {
     this.session.set(response);

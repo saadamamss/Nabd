@@ -1,0 +1,25 @@
+// The panel vocabulary (.ui-*) already mirrors under RTL; this page only adds
+// its own width and the field-error voice.
+.account-panel {
+  max-inline-size: 34rem;
+}
+
+form {
+  display: flex;
+  flex-direction: column;
+  gap: 1.1rem;
+}
+
+.field-error,
+.form-error {
+  color: var(--mat-sys-error);
+  font-size: 0.8125rem;
+}
+
+.form-error {
+  margin: 0;
+}
+
+.ui-actions {
+  margin-block-start: 0.25rem;
+}
