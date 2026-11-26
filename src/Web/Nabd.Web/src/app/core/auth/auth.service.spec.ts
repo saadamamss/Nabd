@@ -104,6 +104,32 @@ describe('AuthService', () => {
     expect(auth.accessToken()).toBeNull();
   });
 
+  it('changePassword calls the self-only door with the snapshot ids (C11)', () => {
+    auth.apply(SESSION);
+
+    auth.changePassword('CorrectHorse1', 'GoodPass12').subscribe();
+
+    const request = http.expectOne('/api/v1/auth/t1/users/u1/password');
+    expect(request.request.method).toBe('PATCH');
+    expect(request.request.body).toEqual({
+      currentPassword: 'CorrectHorse1',
+      newPassword: 'GoodPass12',
+    });
+
+    request.flush(null, { status: 204, statusText: 'No Content' });
+  });
+
+  it('changePassword without a session sends nothing (the page is self-only)', () => {
+    let failure: unknown = null;
+
+    auth.changePassword('CorrectHorse1', 'GoodPass12').subscribe({
+      error: (error: unknown) => (failure = error),
+    });
+
+    expect(failure).toBeInstanceOf(Error);
+    // afterEach's verify() is the second proof: no request was made
+  });
+
   it('restore() always asks the cookie for a session, because it cannot read it', async () => {
     const restored = auth.restore();
 

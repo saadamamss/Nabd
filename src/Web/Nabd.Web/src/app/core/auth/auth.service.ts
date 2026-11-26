@@ -71,6 +71,21 @@ export class AuthService {
     });
   }
 
+  /**
+   * The password-change door (spec 07, C11): self only, and the ids come from
+   * the token's own snapshot — never from a form or a route. No snapshot means
+   * no honest door to call, so nothing leaves the client.
+   */
+  changePassword(currentPassword: string, newPassword: string): Observable<void> {
+    const user = this.user();
+    if (!user) return throwError(() => new Error('changePassword needs a session snapshot'));
+
+    return this.http.patch<void>(
+      `${this.base}/api/v1/auth/${user.tenantId}/users/${user.userId}/password`,
+      { currentPassword, newPassword },
+    );
+  }
+
   /** Stores a successful login/refresh pair; the cookie rotates server-side. */
   apply(response: LoginResponse): void {
     this.session.set(response);
