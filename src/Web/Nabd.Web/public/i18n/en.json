@@ -209,7 +209,8 @@
     "resetDeadTitle": "This link is no longer valid",
     "resetDeadBody": "A reset link works once and expires after 15 minutes. Request a new one.",
     "resetNewLink": "Request a new link",
-    "backoff": "Too many attempts. Wait a moment, then try again."
+    "backoff": "Too many attempts. Wait a moment, then try again.",
+    "passwordChanged": "Your password changed. Sign in again with the new one."
   },
   "roles": {
     "viewer": "Viewer",
@@ -367,14 +368,21 @@
       "title": "Alerts",
       "body": "The alert feed arrives in a later step."
     },
-    "settings": {
-      "title": "Settings",
-      "body": "Account and notification settings arrive in later steps."
-    },
     "platform": {
       "title": "Platform",
       "body": "The platform console arrives in a later step."
     }
+  },
+  "settings": {
+    "accountTitle": "Account",
+    "accountSubtitle": "Change the password you sign in with. Your other sessions are signed out when it changes.",
+    "currentPassword": "Current password",
+    "newPassword": "New password",
+    "confirmPassword": "Confirm new password",
+    "passwordNote": "At least 8 characters.",
+    "wrongCurrent": "That is not your current password.",
+    "changePassword": "Change password",
+    "changing": "Changing…"
   },
   "errors": {
     "network": "We could not reach the server.",

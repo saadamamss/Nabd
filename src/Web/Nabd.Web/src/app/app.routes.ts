@@ -5,6 +5,7 @@ import { Shell } from './layout/shell/shell';
 import { LoginPage } from './pages/login/login';
 import { ForgotPasswordPage } from './pages/forgot-password/forgot-password';
 import { ResetPasswordPage } from './pages/reset-password/reset-password';
+import { AccountPage } from './pages/settings/account';
 import { StubPage } from './pages/stub-page/stub-page';
 import { UsersPage } from './pages/users/users';
 import { AssetsPage } from './pages/assets/assets';
@@ -41,7 +42,9 @@ export const routes: Routes = [
       // P5 spec 05: the alert feed (FR-42) and one alert's evidence.
       { path: 'alerts', component: AlertsPage },
       { path: 'alerts/:alertId', component: AlertDetailPage },
-      { path: 'settings', component: StubPage, data: { page: 'settings' } },
+      // P5 spec 07: settings exists now, starting with the account page (C5).
+      { path: 'settings', pathMatch: 'full', redirectTo: 'settings/account' },
+      { path: 'settings/account', component: AccountPage },
       {
         path: 'platform',
         component: StubPage,
