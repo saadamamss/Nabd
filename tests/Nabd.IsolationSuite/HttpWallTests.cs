@@ -265,6 +265,21 @@ public sealed class HttpWallTests : IClassFixture<PostgresFixture>, IDisposable
         Assert.Equal(HttpStatusCode.OK, locale.StatusCode);
         Assert.Contains("\"locale\":\"ar\"", await BodyAsync(locale));
 
+        // auth half (spec 07 S1): the SAME door now separates its two refusals —
+        // 7 chars with a correct current is 400 weak_password, a wrong current with
+        // a legal new one is 401 invalid_credentials — and neither rotates anything
+        var weakNew = await SendAsync(HttpMethod.Patch,
+            $"/api/v1/auth/{seed.T1}/users/{seed.U1Id}/password",
+            new { currentPassword = "CorrectHorse1!", newPassword = "Seven77" }, seed.U1Token);
+        Assert.Equal(HttpStatusCode.BadRequest, weakNew.StatusCode);
+        Assert.Contains(IdentityErrors.WeakPassword, await BodyAsync(weakNew));
+
+        var wrongCurrent = await SendAsync(HttpMethod.Patch,
+            $"/api/v1/auth/{seed.T1}/users/{seed.U1Id}/password",
+            new { currentPassword = "TotallyWrong99", newPassword = "RotatedHorse22!" }, seed.U1Token);
+        Assert.Equal(HttpStatusCode.Unauthorized, wrongCurrent.StatusCode);
+        Assert.Contains(IdentityErrors.InvalidCredentials, await BodyAsync(wrongCurrent));
+
         // auth half (spec 03): U1 rotates HIS OWN password (AssertSelf law —
         // no user may rotate another's, the door takes the CALLER's id), 204 →
         // new password opens, old dies
