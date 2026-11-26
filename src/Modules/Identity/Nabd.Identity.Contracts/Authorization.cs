@@ -40,6 +40,9 @@ public static class Operations
     // P5 spec 06 (F6b): every authenticated role may send feedback — in ALL
     // three rows, because the [Viewer] door admits all three (RouteWallTests 3).
     public const string FeedbackSubmit = "feedback.submit";
+    // P5 spec 06 (F6/F9): the owner's fleet-wide read — platform_admin alone.
+    // The door is [PlatformAdmin], so only that row may carry it.
+    public const string FeedbackRead = "feedback.read";
 }
 
 
@@ -81,6 +84,7 @@ public static class AuthorizationMatrix
             Operations.DeviceRegister, Operations.DeviceRead,
             Operations.DeviceTokenReissue, Operations.DeviceRevoke,
             Operations.TenantList, Operations.TenantDisable, Operations.TenantEnable,
+            Operations.FeedbackRead,
             Operations.AssetRead, Operations.AssetCreate,
             Operations.AssetUpdate, Operations.AssetArchive,Operations.TemplateRead,
             Operations.RuleRead, Operations.RuleCreate,

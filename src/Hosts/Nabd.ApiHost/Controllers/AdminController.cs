@@ -19,6 +19,23 @@ public sealed class AdminController(IPlatformTenantAdmin admin) : ControllerBase
         return result.IsSuccess ? Ok(result.Value) : Translate(result.Error!);
     }
 
+    /// <summary>
+    /// P5 spec 06 S3 (F6/F9): the owner reads submissions without psql. Fleet-wide
+    /// on the audited admin lane; `limit` is a page size (default 50, 1–200) and
+    /// `total` is the table's true count, never the page's length (C6).
+    /// </summary>
+    [PlatformAdmin(Operations.FeedbackRead)]
+    [HttpGet("feedback")]
+    public async Task<IActionResult> ListFeedback(
+        [FromQuery] int? limit = null, CancellationToken ct = default)
+    {
+        var caller = Caller.FromUser(User);
+        if (caller is null) return Unauthorized();
+
+        var result = await admin.ListFeedbackAsync(caller, limit ?? FeedbackReadLimits.Default, ct);
+        return result.IsSuccess ? Ok(result.Value) : Translate(result.Error!);
+    }
+
     [PlatformAdmin(Operations.TenantDisable)]
     [HttpPost("tenants/{tenantId:guid}/disable")]
     public async Task<IActionResult> DisableTenant(Guid tenantId, CancellationToken ct = default)
@@ -48,6 +65,7 @@ public sealed class AdminController(IPlatformTenantAdmin admin) : ControllerBase
         IdentityErrors.TenantNotFound => NotFound(new { code = error }),
         IdentityErrors.CrossTenantTarget => NotFound(new { code = error }),
         IdentityErrors.Forbidden => StatusCode(403, new { code = error }),
+        AdminErrors.InvalidFeedbackLimit => UnprocessableEntity(new { code = error }),
         _ => BadRequest(new { code = error }),
     };
 }
