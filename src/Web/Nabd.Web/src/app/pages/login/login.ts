@@ -1,7 +1,7 @@
 import { Component, inject, signal } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { HttpErrorResponse } from '@angular/common/http';
-import { ActivatedRoute, Router } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { TranslocoPipe } from '@jsverse/transloco';
 import { AuthService } from '../../core/auth/auth.service';
 import { LocaleService } from '../../core/i18n/locale.service';
@@ -17,7 +17,7 @@ function errorCode(error: HttpErrorResponse): string | null {
 
 @Component({
   selector: 'app-login',
-  imports: [ReactiveFormsModule, TranslocoPipe],
+  imports: [ReactiveFormsModule, RouterLink, TranslocoPipe],
   templateUrl: './login.html',
   styleUrl: './login.scss',
 })

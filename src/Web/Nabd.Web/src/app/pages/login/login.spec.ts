@@ -126,4 +126,19 @@ describe('LoginPage', () => {
 
     expect(navigate).not.toHaveBeenCalled();
   });
+
+  it('offers the way out: a link to the forgot-password door', async () => {
+    configure();
+    http = TestBed.inject(HttpTestingController);
+
+    const fixture = TestBed.createComponent(LoginPage);
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const link = (fixture.nativeElement as HTMLElement).querySelector(
+      'a[href="/forgot-password"]',
+    );
+    expect(link).not.toBeNull();
+    expect(link?.textContent).toContain('Forgot your password?');
+  });
 });

@@ -50,6 +50,15 @@ export class AuthService {
       .pipe(tap((response) => this.apply(response)));
   }
 
+  /**
+   * The anonymous reset-request door (spec 07): it answers 204 for every address,
+   * known or not, so the caller may not infer anything from success — only a
+   * 429 (with its wait) or a transport failure is a different outcome.
+   */
+  requestReset(email: string): Observable<void> {
+    return this.http.post<void>(`${this.base}/api/v1/auth/reset-password`, { email });
+  }
+
   /** Stores a successful login/refresh pair; the cookie rotates server-side. */
   apply(response: LoginResponse): void {
     this.session.set(response);

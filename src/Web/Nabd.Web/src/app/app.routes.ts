@@ -3,6 +3,7 @@ import { authGuard } from './core/auth/auth.guard';
 import { platformGuard } from './core/auth/platform.guard';
 import { Shell } from './layout/shell/shell';
 import { LoginPage } from './pages/login/login';
+import { ForgotPasswordPage } from './pages/forgot-password/forgot-password';
 import { StubPage } from './pages/stub-page/stub-page';
 import { UsersPage } from './pages/users/users';
 import { AssetsPage } from './pages/assets/assets';
@@ -14,6 +15,8 @@ import { AlertDetailPage } from './pages/alerts/alert-detail';
 
 export const routes: Routes = [
   { path: 'login', component: LoginPage },
+  // P5 spec 07: anonymous, like the sign-in door it hangs off.
+  { path: 'forgot-password', component: ForgotPasswordPage },
   {
     path: '',
     component: Shell,

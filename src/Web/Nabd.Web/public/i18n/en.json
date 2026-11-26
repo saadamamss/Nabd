@@ -187,6 +187,14 @@
     "sessionExpired": "Your session ended. Sign in again.",
     "signOut": "Sign out",
     "signedOut": "You are signed out.",
+    "forgot": "Forgot your password?",
+    "forgotTitle": "Reset your password",
+    "forgotSubtitle": "Enter the email on your account and we will send a link to set a new password.",
+    "forgotSend": "Send the link",
+    "forgotSending": "Sending…",
+    "forgotSent": "If that address has an account, a link is on its way. It is valid for 15 minutes.",
+    "forgotBack": "Back to sign in",
+    "forgotRetry": "Too many attempts. Try again in {{seconds}} s.",
     "backoff": "Too many attempts. Wait a moment, then try again."
   },
   "roles": {

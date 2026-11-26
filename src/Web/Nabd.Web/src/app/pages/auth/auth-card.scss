@@ -1,0 +1,95 @@
+// One anonymous shell for the reset screens. Logical properties only, so the
+// card mirrors under `dir="rtl"` with no second stylesheet (spec 01's law).
+.auth-page {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  min-block-size: 100vh;
+  padding: clamp(1.25rem, 4vw, 2.5rem);
+  background:
+    radial-gradient(70% 55% at 50% 0%, var(--app-brand-soft), transparent 70%),
+    var(--app-canvas);
+}
+
+.auth-top,
+.card {
+  inline-size: 100%;
+  max-inline-size: 25rem;
+  margin-inline: auto;
+}
+
+.auth-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.7rem;
+  font-weight: 700;
+}
+
+.brand-mark {
+  display: grid;
+  place-items: center;
+  flex: none;
+  inline-size: 2.2rem;
+  block-size: 2.2rem;
+  border-radius: 0.8rem;
+  background: linear-gradient(140deg, #1d4ed8, #0ea5e9);
+  color: #fff;
+  box-shadow: 0 8px 20px -8px rgb(29 78 216 / 70%);
+}
+
+.brand-mark svg {
+  inline-size: 1.2rem;
+  block-size: 1.2rem;
+}
+
+.locale-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding-block: 0.45rem;
+  padding-inline: 0.75rem;
+  border: 1px solid var(--app-border);
+  border-radius: 999px;
+  background: var(--app-surface);
+  color: var(--app-text-muted);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    color var(--app-duration) var(--app-easing),
+    border-color var(--app-duration) var(--app-easing);
+}
+
+.locale-toggle:hover {
+  border-color: var(--app-border-strong);
+  color: var(--app-text);
+}
+
+.locale-toggle svg {
+  inline-size: 1rem;
+  block-size: 1rem;
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  margin-block: auto;
+  padding: clamp(1.25rem, 4vw, 1.9rem);
+  border: 1px solid var(--app-border);
+  border-radius: var(--app-radius-lg);
+  background: var(--app-surface);
+  box-shadow: var(--app-shadow-md);
+}
+
+.auth-foot {
+  color: var(--app-text-muted);
+  font-size: 0.8125rem;
+  text-align: center;
+}
