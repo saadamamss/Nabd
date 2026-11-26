@@ -21,6 +21,7 @@
     <ProjectReference Include="..\..\Modules\Notifications\Nabd.Notifications\Nabd.Notifications.csproj" />
     <ProjectReference Include="..\..\Modules\Realtime\Nabd.Realtime\Nabd.Realtime.csproj" />
     <ProjectReference Include="..\..\Modules\Admin\Nabd.Admin\Nabd.Admin.csproj" />
+    <ProjectReference Include="..\..\Modules\Feedback\Nabd.Feedback\Nabd.Feedback.csproj" />
   </ItemGroup>
 
 </Project>

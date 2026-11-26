@@ -20,6 +20,8 @@ using Nabd.Notifications.Contracts;
 using Nabd.Alerting.Contracts;
 using Nabd.Realtime.Contracts;
 using Nabd.ApiHost.Realtime;
+using Nabd.Feedback;
+using Nabd.Feedback.Contracts;
 
 _ = Nabd.Identity.EnumerationArmor.BurnHash;
 
@@ -108,6 +110,9 @@ builder.Services.AddSingleton<NotificationsDb>();
 builder.Services.AddSingleton<TelegramChannels>();
 builder.Services.AddSingleton<ITelegramChannels>(sp => sp.GetRequiredService<TelegramChannels>());
 builder.Services.AddSingleton<IAlerting, AlertService>();
+// ===== P5 spec 06 — the feedback door (writes only; the owner's read is S3) =====
+builder.Services.AddSingleton<FeedbackDb>();
+builder.Services.AddSingleton<IFeedback, FeedbackService>();
 // Health endpoints (ADR-010; 08 §6): liveness = process up.
 // Readiness expands in P1+ to probe DB, queue and broker session (08 §6 readiness list).
 builder.Services.AddHealthChecks();
