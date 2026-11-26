@@ -65,6 +65,17 @@ export class FeedbackButton {
     this.isOpen.set(false);
   }
 
+  /**
+   * The form's own `submit`, not `ngSubmit`: NgForm is not imported here (this
+   * form has no form group), so `(ngSubmit)` binds to nothing and the browser
+   * runs its native GET to the same URL — a full reload that throws the draft
+   * away before the POST is ever made. The event is cancelled first.
+   */
+  submit(event: Event): void {
+    event.preventDefault();
+    this.send();
+  }
+
   send(): void {
     if (!this.canSend()) return;
 

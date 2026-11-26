@@ -92,6 +92,28 @@ describe('FeedbackButton', () => {
     );
   });
 
+  it('the form submit is intercepted — the page must never navigate', () => {
+    const { fixture, http, component } = setup();
+    component.open();
+    component.message.set('no reload please');
+    fixture.detectChanges();
+
+    const form = host(fixture).querySelector('form')!;
+    const event = new Event('submit', { cancelable: true, bubbles: true });
+    form.dispatchEvent(event);
+
+    // a native, unprevented submit is a GET to the same URL: the app reloads
+    // and the typed message is gone (the defect this fact exists for)
+    expect(event.defaultPrevented).toBe(true);
+
+    const request = http.expectOne('/api/v1/feedback');
+    expect(request.request.method).toBe('POST');
+    request.flush(
+      { id: 'f3', createdAt: '2026-11-26T00:00:00Z' },
+      { status: 201, statusText: 'Created' },
+    );
+  });
+
   it('a refusal keeps the dialog and the typed text, and names the server code', async () => {
     const { fixture, http, component } = setup();
     component.open();

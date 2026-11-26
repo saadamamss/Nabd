@@ -37,7 +37,7 @@
         </p>
       }
 
-      <form (ngSubmit)="send()">
+      <form (submit)="submit($event)">
         <label class="ui-field">
           <span>{{ 'feedback.message' | transloco }}</span>
           <textarea
