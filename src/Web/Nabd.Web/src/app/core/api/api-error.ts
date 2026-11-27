@@ -44,6 +44,8 @@ const CODE_KEYS: Readonly<Record<string, string>> = {
   'feedback:invalid_locale': 'errors.feedbackLocale',
   'feedback:invalid_page': 'errors.feedbackPage',
   'feedback:rate_limited': 'errors.rateLimited',
+  // spec 08: the Telegram severities door (NotificationErrors in the Notifications room)
+  'notifications:invalid_severity': 'errors.invalidSeverity',
 };
 
 /** Every code this UI knows how to translate (the parity test enumerates it). */

@@ -1,0 +1,107 @@
+// The panel and dialog vocabulary lives in styles.scss and mirrors under RTL;
+// this page adds only the card rhythm and the code block (numeric-LTR by fact).
+.notif-card {
+  max-inline-size: 40rem;
+}
+
+.notif-card h2 {
+  margin-block-end: 0.5rem;
+  font-size: 1.05rem;
+}
+
+.notif-card .ui-btn {
+  margin-block-start: 0.5rem;
+}
+
+.notif-link {
+  margin-block-start: 0.35rem;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--app-brand-strong);
+  font: inherit;
+  font-size: 0.875rem;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.link-code-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+  margin-block: 0.9rem;
+}
+
+.link-code {
+  padding-block: 0.45rem;
+  padding-inline: 0.8rem;
+  border: 1px solid var(--app-border-strong);
+  border-radius: var(--app-radius-md);
+  background: var(--app-surface-muted);
+  color: var(--app-text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 1.15rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  user-select: all;
+  unicode-bidi: isolate;
+}
+
+.notif-dialog .ui-actions {
+  margin-block-start: 1rem;
+}
+
+.link-expiry {
+  margin-block: 0.5rem;
+  color: var(--app-text-muted);
+  font-size: 0.875rem;
+}
+
+.link-time {
+  display: inline-block;
+  min-inline-size: 3.2rem;
+  color: var(--app-text);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  unicode-bidi: isolate;
+}
+
+.notif-waiting {
+  margin-block-start: 0.9rem;
+}
+
+.notif-subhead {
+  margin-block: 1.2rem 0.25rem;
+  font-size: 0.95rem;
+}
+
+.notif-severities {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.55rem;
+  margin-block-start: 1rem;
+}
+
+.notif-severity-hint {
+  margin-block-end: 0.15rem;
+}
+
+.notif-severity-note {
+  color: var(--app-text-muted);
+  font-size: 0.75rem;
+}
+
+// `info` is a real severity with no Telegram door (plan/06 §6): shown, never usable.
+.ui-check.is-fixed {
+  color: var(--app-text-muted);
+  cursor: default;
+}
+
+// Silence is a choice, not an error: the warning tone names it without alarm.
+.notif-silence {
+  align-self: stretch;
+  border-color: color-mix(in srgb, var(--app-warning) 45%, transparent);
+  background: color-mix(in srgb, var(--app-warning) 10%, var(--app-surface));
+}

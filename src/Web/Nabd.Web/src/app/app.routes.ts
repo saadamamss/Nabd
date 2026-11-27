@@ -6,6 +6,7 @@ import { LoginPage } from './pages/login/login';
 import { ForgotPasswordPage } from './pages/forgot-password/forgot-password';
 import { ResetPasswordPage } from './pages/reset-password/reset-password';
 import { AccountPage } from './pages/settings/account';
+import { NotificationsPage } from './pages/settings/notifications/notifications';
 import { StubPage } from './pages/stub-page/stub-page';
 import { UsersPage } from './pages/users/users';
 import { AssetsPage } from './pages/assets/assets';
@@ -45,6 +46,8 @@ export const routes: Routes = [
       // P5 spec 07: settings exists now, starting with the account page (C5).
       { path: 'settings', pathMatch: 'full', redirectTo: 'settings/account' },
       { path: 'settings/account', component: AccountPage },
+      // P5 spec 08: the user's own Telegram channel (FR-38), all roles.
+      { path: 'settings/notifications', component: NotificationsPage },
       {
         path: 'platform',
         component: StubPage,

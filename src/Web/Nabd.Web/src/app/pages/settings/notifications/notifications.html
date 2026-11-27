@@ -1,0 +1,207 @@
+<section class="ui-page">
+  <header class="ui-head">
+    <div>
+      <span class="ui-kicker">{{ 'nav.settings' | transloco }}</span>
+      <h1 class="ui-title">{{ 'settings.notificationsTitle' | transloco }}</h1>
+      <p class="ui-sub">{{ 'settings.notificationsSubtitle' | transloco }}</p>
+    </div>
+  </header>
+
+  <app-settings-tabs />
+
+  <div class="ui-panel notif-card" data-card="telegram">
+    <h2>{{ 'settings.telegramTitle' | transloco }}</h2>
+
+    @if (loading()) {
+      <p class="ui-hint">{{ 'common.loading' | transloco }}</p>
+    } @else if (problemKey(); as key) {
+      <p class="ui-note is-error" role="alert">{{ key | transloco }}</p>
+      <button class="ui-btn" type="button" data-action="retry" (click)="load()">
+        {{ 'common.retry' | transloco }}
+      </button>
+    } @else if (state()?.linked) {
+      <p class="ui-hint">
+        @if (verifiedText(); as when) {
+          {{ 'settings.linkedSince' | transloco: { when } }}
+        } @else {
+          {{ 'settings.telegramLinked' | transloco }}
+        }
+      </p>
+
+      <div class="notif-severities" data-severities>
+        <h3 class="notif-subhead">{{ 'settings.severitiesTitle' | transloco }}</h3>
+        <p class="ui-hint notif-severity-hint">{{ 'settings.severitiesHint' | transloco }}</p>
+
+        <label class="ui-check">
+          <input
+            type="checkbox"
+            data-severity="warn"
+            [checked]="has('warn')"
+            [disabled]="saving()"
+            (change)="toggle('warn', $event)"
+          />
+          <span class="ui-check-box" aria-hidden="true"></span>
+          {{ 'settings.severityWarn' | transloco }}
+        </label>
+
+        <label class="ui-check">
+          <input
+            type="checkbox"
+            data-severity="critical"
+            [checked]="has('critical')"
+            [disabled]="saving()"
+            (change)="toggle('critical', $event)"
+          />
+          <span class="ui-check-box" aria-hidden="true"></span>
+          {{ 'settings.severityCritical' | transloco }}
+        </label>
+
+        <label class="ui-check is-fixed">
+          <input type="checkbox" data-severity="info" disabled />
+          <span class="ui-check-box" aria-hidden="true"></span>
+          {{ 'settings.severityInfo' | transloco }}
+          <span class="notif-severity-note">{{ 'settings.severityInfoHint' | transloco }}</span>
+        </label>
+
+        @if (!severities().length) {
+          <p class="ui-note notif-silence" data-silence-warning role="status">
+            {{ 'settings.silenceWarning' | transloco }}
+          </p>
+        }
+
+        @if (severityProblem(); as key) {
+          <p class="ui-note is-error" role="alert" data-severity-error>{{ key | transloco }}</p>
+        }
+
+        <button class="ui-btn" type="button" data-action="unlink" (click)="askUnlink()">
+          {{ 'settings.unlink' | transloco }}
+        </button>
+      </div>
+    } @else {
+      <p class="ui-hint">{{ 'settings.telegramUnlinked' | transloco }}</p>
+      <button
+        class="ui-btn is-primary"
+        type="button"
+        data-action="link"
+        [disabled]="opening()"
+        (click)="openLink()"
+      >
+        {{ 'settings.linkTelegram' | transloco }}
+      </button>
+    }
+
+    @if (!linkOpen()) {
+      @if (ticketProblem(); as key) {
+        <p class="ui-note is-error" role="alert">{{ key | transloco }}</p>
+      }
+    }
+  </div>
+
+  <div class="ui-panel notif-card" data-card="email">
+    <h2>{{ 'settings.emailTitle' | transloco }}</h2>
+    <p class="ui-hint">{{ 'settings.emailBody' | transloco }}</p>
+    <button class="notif-link" type="button" data-action="feedback" (click)="openFeedback()">
+      {{ 'settings.emailFeedback' | transloco }}
+    </button>
+  </div>
+</section>
+
+@if (linkOpen()) {
+  <div class="ui-overlay" role="presentation" (keydown.escape)="closeLink()">
+    <div
+      class="ui-dialog notif-dialog"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="link-title"
+    >
+      <h2 id="link-title">{{ 'settings.linkTitle' | transloco }}</h2>
+
+      @if (ticket(); as ticket) {
+        <p class="ui-hint">{{ 'settings.linkIntro' | transloco }}</p>
+
+        <div class="link-code-row">
+          <code class="link-code" data-link-code dir="ltr">{{ ticket.code }}</code>
+          <button class="ui-btn" type="button" data-action="copy" (click)="copy()">
+            {{ (copied() ? 'common.copied' : 'common.copy') | transloco }}
+          </button>
+        </div>
+
+        <p class="link-expiry">
+          {{ 'settings.expiresIn' | transloco }}
+          <span class="link-time" data-countdown dir="ltr">{{ countdown() }}</span>
+        </p>
+
+        @if (deepLink(); as href) {
+          <a
+            class="ui-btn is-primary"
+            data-bot-link
+            [href]="href"
+            target="_blank"
+            rel="noopener"
+          >
+            {{ 'settings.openBot' | transloco }}
+          </a>
+        } @else {
+          <p class="ui-note">{{ 'settings.linkManual' | transloco }}</p>
+        }
+
+        <p class="ui-hint notif-waiting" data-waiting>{{ 'settings.linkWaiting' | transloco }}</p>
+      } @else {
+        <p class="ui-note" role="alert" data-expired>{{ 'settings.linkExpired' | transloco }}</p>
+        <button
+          class="ui-btn is-primary"
+          type="button"
+          data-action="new-code"
+          [disabled]="opening()"
+          (click)="openLink()"
+        >
+          {{ 'settings.newCode' | transloco }}
+        </button>
+      }
+
+      @if (ticketProblem(); as key) {
+        <p class="ui-note is-error" role="alert">{{ key | transloco }}</p>
+      }
+
+      <div class="ui-actions">
+        <button class="ui-btn" type="button" data-action="close-link" (click)="closeLink()">
+          {{ 'common.cancel' | transloco }}
+        </button>
+      </div>
+    </div>
+  </div>
+}
+
+@if (unlinkOpen()) {
+  <div class="ui-overlay" role="presentation" (keydown.escape)="cancelUnlink()">
+    <div
+      class="ui-dialog notif-dialog"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="unlink-title"
+      data-unlink-dialog
+    >
+      <h2 id="unlink-title">{{ 'settings.unlinkTitle' | transloco }}</h2>
+      <p class="ui-hint">{{ 'settings.unlinkBody' | transloco }}</p>
+
+      @if (unlinkProblem(); as key) {
+        <p class="ui-note is-error" role="alert">{{ key | transloco }}</p>
+      }
+
+      <div class="ui-actions">
+        <button class="ui-btn" type="button" data-action="cancel-unlink" (click)="cancelUnlink()">
+          {{ 'common.cancel' | transloco }}
+        </button>
+        <button
+          class="ui-btn is-danger"
+          type="button"
+          data-action="confirm-unlink"
+          [disabled]="unlinking()"
+          (click)="unlink()"
+        >
+          {{ 'settings.unlink' | transloco }}
+        </button>
+      </div>
+    </div>
+  </div>
+}

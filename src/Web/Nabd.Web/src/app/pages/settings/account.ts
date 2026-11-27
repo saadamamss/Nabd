@@ -6,6 +6,7 @@ import { TranslocoPipe } from '@jsverse/transloco';
 import { AuthService } from '../../core/auth/auth.service';
 import { NoticeService } from '../../core/ui/notice.service';
 import { describeApiError } from '../../core/api/api-error';
+import { SettingsTabs } from './settings-tabs';
 
 const WRONG_CURRENT = 'identity:invalid_credentials';
 const WEAK = 'identity:weak_password';
@@ -27,7 +28,7 @@ function codeOf(error: HttpErrorResponse): string | null {
  */
 @Component({
   selector: 'app-account',
-  imports: [ReactiveFormsModule, TranslocoPipe],
+  imports: [ReactiveFormsModule, TranslocoPipe, SettingsTabs],
   templateUrl: './account.html',
   styleUrl: './account.scss',
 })
