@@ -27,6 +27,56 @@
           {{ 'settings.telegramLinked' | transloco }}
         }
       </p>
+
+      <div class="notif-severities" data-severities>
+        <h3 class="notif-subhead">{{ 'settings.severitiesTitle' | transloco }}</h3>
+        <p class="ui-hint notif-severity-hint">{{ 'settings.severitiesHint' | transloco }}</p>
+
+        <label class="ui-check">
+          <input
+            type="checkbox"
+            data-severity="warn"
+            [checked]="has('warn')"
+            [disabled]="saving()"
+            (change)="toggle('warn', $event)"
+          />
+          <span class="ui-check-box" aria-hidden="true"></span>
+          {{ 'settings.severityWarn' | transloco }}
+        </label>
+
+        <label class="ui-check">
+          <input
+            type="checkbox"
+            data-severity="critical"
+            [checked]="has('critical')"
+            [disabled]="saving()"
+            (change)="toggle('critical', $event)"
+          />
+          <span class="ui-check-box" aria-hidden="true"></span>
+          {{ 'settings.severityCritical' | transloco }}
+        </label>
+
+        <label class="ui-check is-fixed">
+          <input type="checkbox" data-severity="info" disabled />
+          <span class="ui-check-box" aria-hidden="true"></span>
+          {{ 'settings.severityInfo' | transloco }}
+          <span class="notif-severity-note">{{ 'settings.severityInfoHint' | transloco }}</span>
+        </label>
+
+        @if (!severities().length) {
+          <p class="ui-note notif-silence" data-silence-warning role="status">
+            {{ 'settings.silenceWarning' | transloco }}
+          </p>
+        }
+
+        @if (severityProblem(); as key) {
+          <p class="ui-note is-error" role="alert" data-severity-error>{{ key | transloco }}</p>
+        }
+
+        <button class="ui-btn" type="button" data-action="unlink" (click)="askUnlink()">
+          {{ 'settings.unlink' | transloco }}
+        </button>
+      </div>
     } @else {
       <p class="ui-hint">{{ 'settings.telegramUnlinked' | transloco }}</p>
       <button
@@ -116,6 +166,40 @@
       <div class="ui-actions">
         <button class="ui-btn" type="button" data-action="close-link" (click)="closeLink()">
           {{ 'common.cancel' | transloco }}
+        </button>
+      </div>
+    </div>
+  </div>
+}
+
+@if (unlinkOpen()) {
+  <div class="ui-overlay" role="presentation" (keydown.escape)="cancelUnlink()">
+    <div
+      class="ui-dialog notif-dialog"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="unlink-title"
+      data-unlink-dialog
+    >
+      <h2 id="unlink-title">{{ 'settings.unlinkTitle' | transloco }}</h2>
+      <p class="ui-hint">{{ 'settings.unlinkBody' | transloco }}</p>
+
+      @if (unlinkProblem(); as key) {
+        <p class="ui-note is-error" role="alert">{{ key | transloco }}</p>
+      }
+
+      <div class="ui-actions">
+        <button class="ui-btn" type="button" data-action="cancel-unlink" (click)="cancelUnlink()">
+          {{ 'common.cancel' | transloco }}
+        </button>
+        <button
+          class="ui-btn is-danger"
+          type="button"
+          data-action="confirm-unlink"
+          [disabled]="unlinking()"
+          (click)="unlink()"
+        >
+          {{ 'settings.unlink' | transloco }}
         </button>
       </div>
     </div>

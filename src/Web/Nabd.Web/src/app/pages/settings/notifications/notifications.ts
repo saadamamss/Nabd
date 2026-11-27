@@ -12,6 +12,9 @@ const POLL_MS = 3000;
 /** The countdown moves once a second; it is the same clock that stops the poll. */
 const TICK_MS = 1000;
 
+/** The order the boxes are drawn in; the chosen LIST always comes from the server. */
+const SEVERITY_ORDER = ['warn', 'critical'] as const;
+
 /** mm:ss, always two digits per side, so the block never reflows. */
 function formatCountdown(ms: number): string {
   const total = Math.ceil(ms / 1000);
@@ -53,6 +56,13 @@ export class NotificationsPage implements OnInit, OnDestroy {
   readonly ticketProblem = signal<string | null>(null);
   readonly copied = signal(false);
 
+  /** S3: one severities write at a time (N9), and the unlink confirmation. */
+  readonly saving = signal(false);
+  readonly severityProblem = signal<string | null>(null);
+  readonly unlinkOpen = signal(false);
+  readonly unlinking = signal(false);
+  readonly unlinkProblem = signal<string | null>(null);
+
   /** Ticked once a second while the dialog is open; the countdown reads it. */
   private readonly now = signal(Date.now());
 
@@ -75,6 +85,9 @@ export class NotificationsPage implements OnInit, OnDestroy {
   });
 
   readonly countdown = computed(() => formatCountdown(this.remainingMs()));
+
+  /** C10: the page never hard-codes the default — it renders the server's list. */
+  readonly severities = computed(() => this.state()?.severities ?? []);
 
   /** The server's `verifiedAt` in the active locale — never a guessed date. */
   readonly verifiedText = computed(() => {
@@ -161,6 +174,75 @@ export class NotificationsPage implements OnInit, OnDestroy {
 
   openFeedback(): void {
     this.feedback.open();
+  }
+
+  has(value: string): boolean {
+    return this.severities().includes(value);
+  }
+
+  /**
+   * N9: the boxes stay disabled while a write is in flight, so the answer the
+   * page renders is always the newest one the server sent — never a race.
+   */
+  toggle(value: 'warn' | 'critical', event: Event): void {
+    const box = event.target as HTMLInputElement;
+    if (this.saving()) return;
+
+    const chosen = new Set(this.severities());
+    if (box.checked) chosen.add(value);
+    else chosen.delete(value);
+
+    this.save(SEVERITY_ORDER.filter((severity) => chosen.has(severity)), value, box);
+  }
+
+  private save(next: string[], value: string, box: HTMLInputElement): void {
+    this.saving.set(true);
+    this.severityProblem.set(null);
+    this.api.setSeverities(next).subscribe({
+      next: (state) => {
+        this.saving.set(false);
+        // C3: a 200 is a state, not a link — the page follows `linked` alone
+        this.state.set(state);
+        // the checked binding only writes when its value changes; say the truth
+        box.checked = state.severities.includes(value);
+      },
+      error: (error: unknown) => {
+        this.saving.set(false);
+        this.severityProblem.set(describeApiError(error).key);
+        // the server never took the pick, so the box must not keep it
+        box.checked = this.has(value);
+      },
+    });
+  }
+
+  askUnlink(): void {
+    this.unlinkProblem.set(null);
+    this.unlinkOpen.set(true);
+  }
+
+  cancelUnlink(): void {
+    this.unlinkOpen.set(false);
+    this.unlinkProblem.set(null);
+  }
+
+  /** N6: destructive but reversible — the confirm is the only path to DELETE. */
+  unlink(): void {
+    if (this.unlinking()) return;
+    this.unlinking.set(true);
+    this.unlinkProblem.set(null);
+    this.api.unlink().subscribe({
+      next: (state) => {
+        this.unlinking.set(false);
+        this.unlinkOpen.set(false);
+        this.severityProblem.set(null);
+        this.state.set(state);
+        this.notices.show('settings.unlinkSuccess', 'success');
+      },
+      error: (error: unknown) => {
+        this.unlinking.set(false);
+        this.unlinkProblem.set(describeApiError(error).key);
+      },
+    });
   }
 
   private startWatching(): void {

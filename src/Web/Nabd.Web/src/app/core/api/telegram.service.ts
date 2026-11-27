@@ -35,4 +35,19 @@ export class TelegramApi {
   link(): Observable<TelegramTicket> {
     return this.http.post<TelegramTicket>(`${this.base}/api/v1/me/telegram/link`, null);
   }
+
+  /**
+   * C3: the door upserts the row even while unlinked, so its answer is a state,
+   * not a promise of a link — the page follows `linked` only.
+   */
+  setSeverities(severities: string[]): Observable<TelegramState> {
+    return this.http.patch<TelegramState>(`${this.base}/api/v1/me/telegram/severities`, {
+      severities,
+    });
+  }
+
+  /** C4: the picks survive on the server; the reply is the unlinked state. */
+  unlink(): Observable<TelegramState> {
+    return this.http.delete<TelegramState>(`${this.base}/api/v1/me/telegram/link`);
+  }
 }

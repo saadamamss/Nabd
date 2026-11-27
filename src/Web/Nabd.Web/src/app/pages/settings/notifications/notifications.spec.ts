@@ -174,8 +174,10 @@ describe('NotificationsPage', () => {
 
     expect(text(rig)).toContain(when);
     expect(rig.host.querySelector('[data-action="link"]')).toBeNull();
-    // severities and unlink are S3 — this page half promises nothing it lacks
-    expect(rig.host.querySelectorAll('input').length).toBe(0);
+    // S3 arrived: a linked state now carries the boxes and the unlink door
+    expect(rig.host.querySelector('[data-severity="warn"]')).not.toBeNull();
+    expect(rig.host.querySelector('[data-severity="critical"]')).not.toBeNull();
+    expect(rig.host.querySelector('[data-action="unlink"]')).not.toBeNull();
   });
 
   it('the ticket is shown once, with the deep link, and leaves the DOM on close', () => {
@@ -475,5 +477,153 @@ describe('NotificationsPage', () => {
     expect(children.find((child) => child.path === 'settings')?.redirectTo).toBe(
       'settings/account',
     );
+  });
+
+  // ---- S3: the controls -------------------------------------------------
+
+  function linked(rig: Rig): void {
+    state(rig, { linked: true, verifiedAt: VERIFIED, severities: ['warn', 'critical'] });
+  }
+
+  function severity(rig: Rig, value: string): HTMLInputElement {
+    const box = rig.host.querySelector(`[data-severity="${value}"]`) as HTMLInputElement | null;
+    expect(box, `the ${value} checkbox must exist`).not.toBeNull();
+    return box!;
+  }
+
+  function patch(rig: Rig) {
+    return rig.http.expectOne({ method: 'PATCH', url: `${URL}/severities` });
+  }
+
+  it('linked: the date, both server-chosen boxes and unlink — and info is never enabled (N4)', () => {
+    const rig = setup();
+    state(rig, { linked: true, verifiedAt: VERIFIED, severities: ['critical'] });
+
+    const en = DICTIONARIES['en'] as unknown as {
+      settings: { severitiesTitle: string; severityInfoHint: string };
+    };
+
+    expect(text(rig)).toContain(en.settings.severitiesTitle);
+    // the boxes render the SERVER's list, not a hard-coded default (C10)
+    expect(severity(rig, 'warn').checked).toBe(false);
+    expect(severity(rig, 'critical').checked).toBe(true);
+    expect(severity(rig, 'warn').disabled).toBe(false);
+    expect(severity(rig, 'critical').disabled).toBe(false);
+
+    expect(severity(rig, 'info').disabled).toBe(true);
+    expect(severity(rig, 'info').checked).toBe(false);
+    expect(text(rig)).toContain(en.settings.severityInfoHint);
+
+    expect(rig.host.querySelector('[data-action="unlink"]')).not.toBeNull();
+    expect(rig.host.querySelectorAll('input[type="checkbox"]:not([disabled])').length).toBe(2);
+  });
+
+  it('a toggle sends the whole list, disables both boxes in flight, then renders the answer (N9)', () => {
+    const rig = setup();
+    linked(rig);
+
+    severity(rig, 'warn').click();
+    rig.fixture.detectChanges();
+    const save = patch(rig);
+
+    expect(save.request.body).toEqual({ severities: ['critical'] });
+    // one write at a time: neither box may start a second request
+    expect(severity(rig, 'warn').disabled).toBe(true);
+    expect(severity(rig, 'critical').disabled).toBe(true);
+
+    save.flush({ linked: true, verifiedAt: VERIFIED, severities: ['critical'] });
+    rig.fixture.detectChanges();
+
+    expect(severity(rig, 'warn').checked).toBe(false);
+    expect(severity(rig, 'critical').checked).toBe(true);
+    expect(severity(rig, 'warn').disabled).toBe(false);
+  });
+
+  it('silence is a real choice, and a 422 puts the box back on the server truth (fact 6)', () => {
+    const rig = setup();
+    linked(rig);
+
+    const en = DICTIONARIES['en'] as unknown as {
+      settings: { silenceWarning: string };
+      errors: { invalidSeverity: string };
+    };
+
+    // warn off, then critical off → an explicit [], which is silence, not a fault
+    severity(rig, 'warn').click();
+    patch(rig).flush({ linked: true, verifiedAt: VERIFIED, severities: ['critical'] });
+    rig.fixture.detectChanges();
+
+    severity(rig, 'critical').click();
+    const empty = patch(rig);
+    expect(empty.request.body).toEqual({ severities: [] });
+    empty.flush({ linked: true, verifiedAt: VERIFIED, severities: [] });
+    rig.fixture.detectChanges();
+
+    expect(rig.host.querySelector('[data-silence-warning]')?.textContent).toContain(
+      en.settings.silenceWarning,
+    );
+    expect(severity(rig, 'critical').checked).toBe(false);
+
+    // a refusal: the server never took the pick, so the box must not keep it
+    severity(rig, 'warn').click();
+    patch(rig).flush(
+      { code: 'notifications:invalid_severity' },
+      { status: 422, statusText: 'Unprocessable Entity' },
+    );
+    rig.fixture.detectChanges();
+
+    expect(severity(rig, 'warn').checked).toBe(false);
+    expect(text(rig)).toContain(en.errors.invalidSeverity);
+    expect(rig.host.querySelector('[data-silence-warning]')).not.toBeNull();
+  });
+
+  it('unlink asks first, then DELETE flips the card and the boxes leave (N6/fact 7)', () => {
+    const rig = setup();
+    linked(rig);
+
+    const en = DICTIONARIES['en'] as unknown as {
+      settings: { unlinkBody: string; telegramUnlinked: string; linkTelegram: string };
+    };
+    const when = new Intl.DateTimeFormat('en', {
+      dateStyle: 'medium',
+      timeStyle: 'short',
+    }).format(new Date(VERIFIED));
+
+    click(rig, 'unlink');
+    expect(rig.host.querySelector('[data-unlink-dialog]')).not.toBeNull();
+    expect(text(rig)).toContain(en.settings.unlinkBody);
+
+    // cancel is not a hidden DELETE
+    click(rig, 'cancel-unlink');
+    expect(rig.host.querySelector('[data-unlink-dialog]')).toBeNull();
+    expect(rig.http.match({ url: `${URL}/link` }).length).toBe(0);
+    expect(severity(rig, 'warn').checked).toBe(true);
+
+    click(rig, 'unlink');
+    click(rig, 'confirm-unlink');
+    const remove = rig.http.expectOne({ method: 'DELETE', url: `${URL}/link` });
+    remove.flush({ linked: false, severities: ['warn', 'critical'] });
+    rig.fixture.detectChanges();
+
+    expect(rig.host.querySelector('[data-unlink-dialog]')).toBeNull();
+    expect(rig.host.querySelector('[data-action="link"]')?.textContent).toContain(
+      en.settings.linkTelegram,
+    );
+    expect(rig.host.querySelectorAll('input').length).toBe(0);
+    expect(text(rig)).toContain(en.settings.telegramUnlinked);
+    expect(text(rig)).not.toContain(when);
+  });
+
+  it('a severities 200 is not a link: a PATCH answered unlinked stays unlinked (C3/fact 7b)', () => {
+    const rig = setup();
+    linked(rig);
+
+    severity(rig, 'critical').click();
+    patch(rig).flush({ linked: false, severities: ['warn'] });
+    rig.fixture.detectChanges();
+
+    expect(rig.host.querySelector('[data-action="link"]')).not.toBeNull();
+    expect(rig.host.querySelector('[data-action="unlink"]')).toBeNull();
+    expect(rig.host.querySelectorAll('input').length).toBe(0);
   });
 });

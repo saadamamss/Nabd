@@ -404,7 +404,18 @@
     "openBot": "Open Telegram",
     "emailTitle": "Email",
     "emailBody": "Email alerts are configured by the platform and sent to every member of your workspace. A per-user email switch is not available in this version.",
-    "emailFeedback": "Tell us you need it"
+    "emailFeedback": "Tell us you need it",
+    "severitiesTitle": "Alert severities",
+    "severitiesHint": "Choose which alerts are pushed to your Telegram chat.",
+    "severityWarn": "Warnings",
+    "severityCritical": "Critical",
+    "severityInfo": "Info",
+    "severityInfoHint": "Dashboard only",
+    "silenceWarning": "No push. These alerts will appear on the dashboard only.",
+    "unlink": "Unlink Telegram",
+    "unlinkTitle": "Unlink your Telegram chat?",
+    "unlinkBody": "This chat stops receiving alerts. Your severity choices are kept for the next time you link.",
+    "unlinkSuccess": "Telegram is unlinked. Alerts no longer reach that chat."
   },
   "errors": {
     "network": "We could not reach the server.",
