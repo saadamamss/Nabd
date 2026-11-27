@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import { provideTestTransloco } from '../../testing/test-transloco';
 import { AuthService } from '../../core/auth/auth.service';
 import { NoticeService } from '../../core/ui/notice.service';
+import { FeedbackUi } from '../../core/ui/feedback-ui';
 import { routes } from '../../app.routes';
 import { Shell } from '../shell/shell';
 import { FeedbackButton } from './feedback';
@@ -258,5 +259,19 @@ describe('Feedback placement', () => {
     expect(block).toMatch(/inset-inline-(start|end)/);
     expect(block).not.toMatch(/(^|[^-])\bleft:/);
     expect(block).not.toMatch(/(^|[^-])\bright:/);
+  });
+
+  it('another screen may open it through the shared request (spec 08 C8)', async () => {
+    const { fixture } = setup();
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    expect(host(fixture).querySelector('[role="dialog"]')).toBeNull();
+
+    TestBed.inject(FeedbackUi).open();
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    expect(host(fixture).querySelector('[role="dialog"]')).not.toBeNull();
   });
 });

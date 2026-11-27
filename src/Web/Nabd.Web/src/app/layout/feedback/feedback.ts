@@ -1,10 +1,11 @@
-import { Component, computed, ElementRef, inject, signal, viewChild } from '@angular/core';
+import { Component, computed, effect, ElementRef, inject, signal, viewChild } from '@angular/core';
 import { HttpErrorResponse } from '@angular/common/http';
 import { Router } from '@angular/router';
 import { TranslocoPipe, TranslocoService } from '@jsverse/transloco';
 import { describeApiError } from '../../core/api/api-error';
 import { FeedbackApi } from '../../core/api/feedback.service';
 import { NoticeService } from '../../core/ui/notice.service';
+import { FeedbackUi } from '../../core/ui/feedback-ui';
 
 /** The table's ceiling (0030's `feedback_message_len`) — counted in characters. */
 const MAX = 2000;
@@ -38,6 +39,20 @@ export class FeedbackButton {
   private readonly transloco = inject(TranslocoService);
 
   private readonly box = viewChild<ElementRef<HTMLTextAreaElement>>('box');
+
+  /** P5 spec 08 (C8): another screen may ask for this dialog; the button owns it. */
+  private readonly trigger = inject(FeedbackUi);
+
+  constructor() {
+    // only a NEW request opens: a re-created button must not replay an old one
+    let seen = this.trigger.requests();
+    effect(() => {
+      const requested = this.trigger.requests();
+      if (requested === seen) return;
+      seen = requested;
+      this.open();
+    });
+  }
 
   readonly isOpen = signal(false);
   readonly message = signal('');

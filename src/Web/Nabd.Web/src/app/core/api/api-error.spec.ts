@@ -47,6 +47,7 @@ const SERVER_CODES = [
   'identity:role_unknown',
   'identity:invalid_email',
   'identity:weak_password',
+  'notifications:invalid_severity',
 ] as const;
 
 describe('describeApiError', () => {
