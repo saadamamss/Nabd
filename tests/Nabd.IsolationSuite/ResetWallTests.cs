@@ -218,6 +218,58 @@ public sealed class ResetWallTests(PostgresFixture pg) : IClassFixture<PostgresF
         Assert.True(retry.IsSuccess, retry.Error);
     }
 
+    // C4 (2026-11-27): the reset door used to trim, so a password with edge
+    // spaces was stored trimmed and could never be typed back at login. The
+    // secret is stored exactly as chosen, and the login door agrees.
+    [Fact]
+    public async Task a_padded_password_is_stored_as_typed_and_opens_only_with_its_spaces()
+    {
+        var t = await RegisterAsync("padded");
+        var sender = NewSender();
+        var auth = NewAuth(sender);
+
+        _ = await auth.RequestPasswordResetAsync(new ResetPasswordRequest(t.Email, "10.0.0.1"));
+        var token = TokenOf(sender.Sent.Single());
+
+        const string padded = "  Hunter2!  ";   // 12 as typed, 8 inside the spaces
+
+        var confirmed = await auth.ConfirmPasswordResetAsync(new ResetConfirmRequest(token, padded));
+        Assert.True(confirmed.IsSuccess, confirmed.Error);
+
+        // the door that SET the secret and the door that CHECKS it agree
+        var exact = await auth.LoginAsync(new LoginRequest(t.Email, padded, "10.0.0.1"));
+        Assert.True(exact.IsSuccess, $"the stored secret must accept its own spaces: {exact.Error}");
+
+        // the trimmed variant is a DIFFERENT secret — no silent second key
+        var trimmed = await auth.LoginAsync(new LoginRequest(t.Email, padded.Trim(), "10.0.0.1"));
+        Assert.False(trimmed.IsSuccess);
+    }
+
+    // the length gate measures what the user typed: padding cannot buy the
+    // eight-character minimum, and it is not stripped to make a short one pass
+    [Fact]
+    public async Task the_length_gate_counts_the_password_as_typed()
+    {
+        var t = await RegisterAsync("length");
+        var sender = NewSender();
+        var auth = NewAuth(sender);
+
+        _ = await auth.RequestPasswordResetAsync(new ResetPasswordRequest(t.Email, "10.0.0.1"));
+        var token = TokenOf(sender.Sent.Single());
+
+        const string seven = "  abc  ";   // 7 as typed; trimming would make it 3
+        var refused = await auth.ConfirmPasswordResetAsync(new ResetConfirmRequest(token, seven));
+        Assert.False(refused.IsSuccess);
+        Assert.Equal(IdentityErrors.WeakPassword, refused.Error);
+
+        const string ten = "  abcdef  ";  // 10 as typed; trimming would make it 6
+        var accepted = await auth.ConfirmPasswordResetAsync(new ResetConfirmRequest(token, ten));
+        Assert.True(accepted.IsSuccess, accepted.Error);
+
+        var opens = await auth.LoginAsync(new LoginRequest(t.Email, ten, "10.0.0.1"));
+        Assert.True(opens.IsSuccess, opens.Error);
+    }
+
     [Fact]
     public async Task reset_request_rate_limits_after_five_attempts()
     {

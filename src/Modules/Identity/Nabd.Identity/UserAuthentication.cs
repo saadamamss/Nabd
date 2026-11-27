@@ -308,7 +308,12 @@ public sealed class UserAuthentication : IUserAuthentication
     public async Task<Result<Unit>> ConfirmPasswordResetAsync(ResetConfirmRequest request, CancellationToken ct = default)
     {
         var presented = request.Token?.Trim();
-        var NewPassword = request.NewPassword?.Trim();
+        // C4 (2026-11-27): store the secret EXACTLY as chosen. Trimming here made
+        // this door the only one that altered the password — it was stored trimmed
+        // and could not be typed back at login (which never trims), a silent
+        // lockout; and the length gate measured the trimmed form, so padding was
+        // free. Login and ChangePassword already hash what was typed.
+        var NewPassword = request.NewPassword;
         if(NewPassword is null || NewPassword.Length < 8) return Result<Unit>.Failure(IdentityErrors.WeakPassword);
 
         if(string.IsNullOrWhiteSpace(presented)) return Result<Unit>.Failure(IdentityErrors.ResetTokenDead);
