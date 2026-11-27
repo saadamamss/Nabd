@@ -11,6 +11,7 @@ import { DICTIONARIES } from '../../../testing/test-dictionaries';
 import { authGuard } from '../../../core/auth/auth.guard';
 import { AuthService } from '../../../core/auth/auth.service';
 import { FeedbackUi } from '../../../core/ui/feedback-ui';
+import { NoticeService } from '../../../core/ui/notice.service';
 import { routes } from '../../../app.routes';
 import { Shell } from '../../../layout/shell/shell';
 import { AccountPage } from '../account';
@@ -18,11 +19,21 @@ import { NotificationsPage } from './notifications';
 
 const URL = '/api/v1/me/telegram';
 const VERIFIED = '2026-11-20T09:30:00Z';
-const TICKET = {
-  code: 'K7M2Q9X4P1R8T3V6',
-  expiresAt: '2026-11-27T12:10:00Z',
-  botUsername: 'nabd_bot',
-};
+const CODE = 'K7M2Q9X4P1R8T3V6';
+const BOT = 'nabd_bot';
+
+/** A ticket whose window starts *now* — the server issues ten minutes from its clock. */
+function ticketFor(
+  ms: number,
+  overrides: { code?: string; botUsername?: string | null } = {},
+): { code: string; expiresAt: string; botUsername?: string } {
+  const ticket: { code: string; expiresAt: string; botUsername?: string } = {
+    code: overrides.code ?? CODE,
+    expiresAt: new Date(Date.now() + ms).toISOString(),
+  };
+  if (overrides.botUsername !== null) ticket.botUsername = overrides.botUsername ?? BOT;
+  return ticket;
+}
 
 const SESSION = {
   user: {
@@ -43,10 +54,10 @@ interface Rig {
 
 /** The rig a fact built; null when a fact needs no HTTP (the route fact is static). */
 let controller: HttpTestingController | null = null;
+/** The live rig, so the page's timers are stopped before the module resets. */
+let current: Rig | null = null;
 
 function setup(role = 'tenant_admin'): Rig {
-  controller?.verify();
-  controller = null;
   TestBed.resetTestingModule();
   TestBed.configureTestingModule({
     imports: [NotificationsPage],
@@ -70,7 +81,9 @@ function setup(role = 'tenant_admin'): Rig {
   const fixture = TestBed.createComponent(NotificationsPage);
   fixture.detectChanges();
 
-  return { fixture, http, host: fixture.nativeElement as HTMLElement };
+  const rig = { fixture, http, host: fixture.nativeElement as HTMLElement };
+  current = rig;
+  return rig;
 }
 
 function text(rig: Rig): string {
@@ -82,11 +95,29 @@ function state(rig: Rig, body: object): void {
   rig.fixture.detectChanges();
 }
 
-function openDialog(rig: Rig, ticket: object = TICKET): void {
+function openDialog(
+  rig: Rig,
+  ticket: object = ticketFor(10 * 60_000),
+): void {
   click(rig, 'link');
   const post = rig.http.expectOne({ method: 'POST', url: `${URL}/link` });
   post.flush(ticket);
   rig.fixture.detectChanges();
+}
+
+/**
+ * Moves the fake clock one second at a time and answers every poll on the way:
+ * the page allows one poll in flight, so the next beat must not meet an
+ * unanswered previous one.
+ */
+function advance(rig: Rig, ms: number): void {
+  for (let elapsed = 0; elapsed < ms; elapsed += 1000) {
+    vi.advanceTimersByTime(Math.min(1000, ms - elapsed));
+    for (const poll of rig.http.match(URL)) {
+      poll.flush({ linked: false, severities: ['warn', 'critical'] });
+    }
+    rig.fixture.detectChanges();
+  }
 }
 
 function click(rig: Rig, action: string): void {
@@ -106,8 +137,12 @@ function codeBlock(rig: Rig): HTMLElement | null {
 
 describe('NotificationsPage', () => {
   afterEach(() => {
+    // the page owns two intervals while the dialog is open; stop them with the fixture
+    current?.fixture.destroy();
+    current = null;
     controller?.verify();
     controller = null;
+    vi.useRealTimers();
   });
 
   it('unlinked: offers the link button, and no severity control is drawn yet', () => {
@@ -153,18 +188,116 @@ describe('NotificationsPage', () => {
 
     const blocks = rig.host.querySelectorAll('[data-link-code]');
     expect(blocks.length).toBe(1);
-    expect(blocks[0].textContent?.trim()).toBe(TICKET.code);
+    expect(blocks[0].textContent?.trim()).toBe(CODE);
     expect(blocks[0].getAttribute('dir')).toBe('ltr');
 
     const link = rig.host.querySelector('[data-bot-link]') as HTMLAnchorElement | null;
     expect(link?.getAttribute('href')).toBe(
-      `https://t.me/${TICKET.botUsername}?start=${TICKET.code}`,
+      `https://t.me/${BOT}?start=${CODE}`,
     );
 
     click(rig, 'close-link');
 
     expect(dialog(rig)).toBeNull();
-    expect(text(rig)).not.toContain(TICKET.code);
+    expect(text(rig)).not.toContain(CODE);
+  });
+
+  it('the dialog watches the link every 3 s, then closes itself when the server says linked', () => {
+    vi.useFakeTimers();
+    const rig = setup();
+    state(rig, { linked: false, severities: ['warn', 'critical'] });
+    openDialog(rig);
+
+    // nothing before the beat: no hidden poll on open
+    vi.advanceTimersByTime(2999);
+    expect(rig.http.match(URL).length).toBe(0);
+
+    vi.advanceTimersByTime(1);
+    const poll = rig.http.expectOne(URL);
+    expect(poll.request.method).toBe('GET');
+    poll.flush({ linked: true, verifiedAt: VERIFIED, severities: ['warn', 'critical'] });
+    rig.fixture.detectChanges();
+
+    const when = new Intl.DateTimeFormat('en', {
+      dateStyle: 'medium',
+      timeStyle: 'short',
+    }).format(new Date(VERIFIED));
+
+    expect(dialog(rig)).toBeNull();
+    expect(text(rig)).not.toContain(CODE);
+    expect(text(rig)).toContain(when);
+
+    const notices = TestBed.inject(NoticeService);
+    expect(notices.notices()[0]?.key).toBe('settings.linkSuccess');
+    expect(notices.notices()[0]?.kind).toBe('success');
+    for (const notice of notices.notices()) notices.dismiss(notice.id);
+
+    // the observation is over: no beat after success
+    vi.advanceTimersByTime(30_000);
+    expect(rig.http.match(URL).length).toBe(0);
+  });
+
+  it('closing or leaving the page stops the watch (N10)', () => {
+    vi.useFakeTimers();
+    const rig = setup();
+    state(rig, { linked: false, severities: ['warn', 'critical'] });
+    openDialog(rig);
+
+    click(rig, 'close-link');
+    vi.advanceTimersByTime(30_000);
+    expect(rig.http.match(URL).length).toBe(0);
+
+    openDialog(rig);
+    vi.advanceTimersByTime(3000);
+    rig.http.expectOne(URL).flush({ linked: false, severities: ['warn', 'critical'] });
+
+    rig.fixture.destroy();
+    current = null;
+    vi.advanceTimersByTime(30_000);
+    expect(rig.http.match(URL).length).toBe(0);
+  });
+
+  it('expiry: the countdown runs to zero, the code leaves the page, and a new code can be asked for', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-11-27T12:00:00Z'));
+    const rig = setup();
+    state(rig, { linked: false, severities: ['warn', 'critical'] });
+
+    openDialog(rig, ticketFor(6_000));
+
+    const countdown = () => rig.host.querySelector('[data-countdown]')?.textContent?.trim();
+    expect(countdown()).toBe('00:06');
+    expect(rig.host.querySelector('[data-countdown]')?.getAttribute('dir')).toBe('ltr');
+
+    advance(rig, 1000);
+    expect(countdown()).toBe('00:05');
+
+    advance(rig, 5000);
+
+    // zero: the dialog stays, the code is gone, the clock stopped, nothing claimed
+    const en = DICTIONARIES['en'] as unknown as {
+      settings: { linkExpired: string; newCode: string };
+    };
+    expect(dialog(rig)).not.toBeNull();
+    expect(rig.host.querySelector('[data-link-code]')).toBeNull();
+    expect(text(rig)).not.toContain(CODE);
+    expect(text(rig)).toContain(en.settings.linkExpired);
+    expect(rig.host.querySelector('[data-action="new-code"]')?.textContent).toContain(
+      en.settings.newCode,
+    );
+    expect(TestBed.inject(NoticeService).notices().length).toBe(0);
+
+    // raw clock: an expired window must leave no beat behind
+    vi.advanceTimersByTime(30_000);
+    expect(rig.http.match(URL).length).toBe(0);
+
+    // a fresh ticket reopens the same dialog with a full window
+    click(rig, 'new-code');
+    rig.http.expectOne({ method: 'POST', url: `${URL}/link` }).flush(ticketFor(10 * 60_000));
+    rig.fixture.detectChanges();
+
+    expect(rig.host.querySelector('[data-link-code]')?.textContent?.trim()).toBe(CODE);
+    expect(countdown()).toBe('10:00');
   });
 
   it('the code never reaches storage, the URL, or a log line (C6/N7)', () => {
@@ -184,10 +317,10 @@ describe('NotificationsPage', () => {
 
       expect(window.localStorage.length).toBe(0);
       expect(window.sessionStorage.length).toBe(0);
-      expect(window.location.href).not.toContain(TICKET.code);
+      expect(window.location.href).not.toContain(CODE);
       for (const spy of logs) {
         for (const call of spy.mock.calls) {
-          expect(String(call[0] ?? '')).not.toContain(TICKET.code);
+          expect(String(call[0] ?? '')).not.toContain(CODE);
         }
       }
     } finally {
@@ -233,11 +366,11 @@ describe('NotificationsPage', () => {
     const rig = setup();
     state(rig, { linked: false, severities: ['warn', 'critical'] });
 
-    openDialog(rig, { code: TICKET.code, expiresAt: TICKET.expiresAt });
+    openDialog(rig, ticketFor(10 * 60_000, { botUsername: null }));
 
     expect(rig.host.querySelector('[data-bot-link]')).toBeNull();
     expect(rig.host.querySelector('a[href^="https://t.me"]')).toBeNull();
-    expect(text(rig)).toContain(TICKET.code);
+    expect(text(rig)).toContain(CODE);
   });
 
   it('the email card states the platform truth and renders no control', () => {
@@ -285,7 +418,8 @@ describe('NotificationsPage', () => {
     expect(text(rig)).toContain(ar.settings.notificationsTitle);
     expect(dialog(rig)?.textContent).toContain(ar.settings.linkTitle);
     expect(codeBlock(rig)?.getAttribute('dir')).toBe('ltr');
-    expect(codeBlock(rig)?.textContent?.trim()).toBe(TICKET.code);
+    expect(codeBlock(rig)?.textContent?.trim()).toBe(CODE);
+    expect(rig.host.querySelector('[data-countdown]')?.getAttribute('dir')).toBe('ltr');
   });
 
   it('the tabs name both settings pages and mark the current one (C1)', async () => {

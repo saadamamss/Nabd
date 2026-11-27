@@ -51,3 +51,22 @@
 .notif-dialog .ui-actions {
   margin-block-start: 1rem;
 }
+
+.link-expiry {
+  margin-block: 0.5rem;
+  color: var(--app-text-muted);
+  font-size: 0.875rem;
+}
+
+.link-time {
+  display: inline-block;
+  min-inline-size: 3.2rem;
+  color: var(--app-text);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  unicode-bidi: isolate;
+}
+
+.notif-waiting {
+  margin-block-start: 0.9rem;
+}

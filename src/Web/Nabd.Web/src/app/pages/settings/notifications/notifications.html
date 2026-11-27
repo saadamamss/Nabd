@@ -40,8 +40,10 @@
       </button>
     }
 
-    @if (ticketProblem(); as key) {
-      <p class="ui-note is-error" role="alert">{{ key | transloco }}</p>
+    @if (!linkOpen()) {
+      @if (ticketProblem(); as key) {
+        <p class="ui-note is-error" role="alert">{{ key | transloco }}</p>
+      }
     }
   </div>
 
@@ -54,7 +56,7 @@
   </div>
 </section>
 
-@if (ticket(); as ticket) {
+@if (linkOpen()) {
   <div class="ui-overlay" role="presentation" (keydown.escape)="closeLink()">
     <div
       class="ui-dialog notif-dialog"
@@ -63,27 +65,52 @@
       aria-labelledby="link-title"
     >
       <h2 id="link-title">{{ 'settings.linkTitle' | transloco }}</h2>
-      <p class="ui-hint">{{ 'settings.linkIntro' | transloco }}</p>
 
-      <div class="link-code-row">
-        <code class="link-code" data-link-code dir="ltr">{{ ticket.code }}</code>
-        <button class="ui-btn" type="button" data-action="copy" (click)="copy()">
-          {{ (copied() ? 'common.copied' : 'common.copy') | transloco }}
-        </button>
-      </div>
+      @if (ticket(); as ticket) {
+        <p class="ui-hint">{{ 'settings.linkIntro' | transloco }}</p>
 
-      @if (deepLink(); as href) {
-        <a
-          class="ui-btn is-primary"
-          data-bot-link
-          [href]="href"
-          target="_blank"
-          rel="noopener"
-        >
-          {{ 'settings.openBot' | transloco }}
-        </a>
+        <div class="link-code-row">
+          <code class="link-code" data-link-code dir="ltr">{{ ticket.code }}</code>
+          <button class="ui-btn" type="button" data-action="copy" (click)="copy()">
+            {{ (copied() ? 'common.copied' : 'common.copy') | transloco }}
+          </button>
+        </div>
+
+        <p class="link-expiry">
+          {{ 'settings.expiresIn' | transloco }}
+          <span class="link-time" data-countdown dir="ltr">{{ countdown() }}</span>
+        </p>
+
+        @if (deepLink(); as href) {
+          <a
+            class="ui-btn is-primary"
+            data-bot-link
+            [href]="href"
+            target="_blank"
+            rel="noopener"
+          >
+            {{ 'settings.openBot' | transloco }}
+          </a>
+        } @else {
+          <p class="ui-note">{{ 'settings.linkManual' | transloco }}</p>
+        }
+
+        <p class="ui-hint notif-waiting" data-waiting>{{ 'settings.linkWaiting' | transloco }}</p>
       } @else {
-        <p class="ui-note">{{ 'settings.linkManual' | transloco }}</p>
+        <p class="ui-note" role="alert" data-expired>{{ 'settings.linkExpired' | transloco }}</p>
+        <button
+          class="ui-btn is-primary"
+          type="button"
+          data-action="new-code"
+          [disabled]="opening()"
+          (click)="openLink()"
+        >
+          {{ 'settings.newCode' | transloco }}
+        </button>
+      }
+
+      @if (ticketProblem(); as key) {
+        <p class="ui-note is-error" role="alert">{{ key | transloco }}</p>
       }
 
       <div class="ui-actions">
